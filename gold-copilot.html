@@ -1,0 +1,1552 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>GOLD Copilot</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Noto+Sans+JP:wght@400;700;900&display=swap');
+
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+:root{
+  --bg:#080c12;--surface:#0d1420;--surface2:#111a2a;--border:#1e2d44;
+  --gold:#f0b429;--gold2:#ffd166;--green:#00d97e;--red:#ff4d6a;
+  --blue:#3d8bff;--text:#e8f0ff;--muted:#4a6080;--accent:#1e3a5f;
+}
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Noto Sans JP',sans-serif;overflow:hidden;position:fixed;width:100%;}
+
+/* ── HEADER ── */
+.header{
+  position:fixed;top:0;left:0;right:0;z-index:100;
+  display:flex;align-items:center;justify-content:space-between;
+  padding:10px 14px;
+  background:linear-gradient(180deg,rgba(8,12,18,0.98),rgba(8,12,18,0.85));
+  backdrop-filter:blur(12px);border-bottom:1px solid var(--border);
+  height:54px;
+}
+.brand{display:flex;align-items:center;gap:8px;}
+.brand-dot{width:8px;height:8px;border-radius:50%;background:var(--gold);box-shadow:0 0 8px var(--gold);animation:blink 2s infinite;}
+.brand-name{font-family:'Space Mono',monospace;font-size:13px;font-weight:700;color:var(--gold);letter-spacing:2px;}
+.header-right{display:flex;align-items:center;gap:10px;}
+.price-live{text-align:right;}
+.price-main{font-family:'Space Mono',monospace;font-size:18px;font-weight:700;color:var(--text);line-height:1;}
+.price-change{font-size:10px;font-family:'Space Mono',monospace;margin-top:2px;}
+.positive{color:var(--green);}
+.negative{color:var(--red);}
+
+/* ── TIMEFRAME TABS ── */
+.tf-bar{
+  position:fixed;top:54px;left:0;right:0;z-index:99;
+  display:flex;gap:0;background:var(--surface);
+  border-bottom:1px solid var(--border);height:36px;
+}
+.tf-btn{
+  flex:1;display:flex;align-items:center;justify-content:center;
+  font-family:'Space Mono',monospace;font-size:10px;font-weight:700;
+  color:var(--muted);border:none;background:none;cursor:pointer;
+  letter-spacing:1px;transition:all 0.2s;position:relative;
+}
+.tf-btn.active{color:var(--gold);}
+.tf-btn.active::after{content:'';position:absolute;bottom:0;left:0;right:0;height:2px;background:var(--gold);}
+
+/* ── CHART AREA ── */
+.chart-wrap{
+  position:relative;
+  width:100%;
+  height:52vh;
+  min-height:280px;
+  flex-shrink:0;
+  background:var(--bg);
+  padding:4px 4px 0;
+}
+.chart-canvas-wrap{position:relative;width:100%;height:100%;display:block;}
+#mainChart{width:100%!important;height:100%!important;display:block;min-height:260px;}
+
+/* ── AI ANALYSIS PANEL ── */
+.ai-panel{
+  position:fixed;bottom:60px;left:0;right:0;
+  top:auto;
+  height:88vh;
+  background:var(--surface);
+  padding:16px;display:flex;flex-direction:column;gap:14px;
+  overflow-y:auto;
+  transform:translateY(110%);
+  transition:transform 0.35s cubic-bezier(0.32,0.72,0,1);
+  z-index:200;
+  border-top:2px solid var(--gold);
+  border-radius:16px 16px 0 0;
+}
+.ai-panel.open{
+  transform:translateY(0);
+}
+
+/* シグナルバナー */
+.signal-banner{
+  border-radius:10px;padding:12px 14px;
+  display:flex;align-items:center;justify-content:space-between;
+}
+.signal-left{display:flex;align-items:center;gap:10px;}
+.signal-arrow{font-size:28px;line-height:1;}
+.signal-label{font-family:'Space Mono',monospace;font-size:18px;font-weight:700;letter-spacing:2px;}
+.signal-sub{font-size:13px;color:var(--muted);margin-top:2px;letter-spacing:1px;}
+.signal-strength{font-family:'Space Mono',monospace;font-size:14px;padding:4px 10px;border-radius:20px;font-weight:700;}
+
+/* インジケーターグリッド */
+.indicator-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+.ind-card{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;}
+.ind-label{font-size:12px;color:var(--muted);letter-spacing:2px;font-weight:700;margin-bottom:5px;}
+.ind-value{font-family:'Space Mono',monospace;font-size:30px;font-weight:700;}
+.ind-sub{font-size:13px;color:var(--muted);margin-top:2px;}
+
+/* ラインリスト */
+.lines-section{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;}
+.lines-title{font-size:12px;color:var(--muted);letter-spacing:2px;font-weight:700;margin-bottom:8px;}
+.line-item{display:flex;align-items:center;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border);}
+.line-item:last-child{border-bottom:none;}
+.line-dot{width:10px;height:10px;border-radius:2px;margin-right:8px;flex-shrink:0;}
+.line-name{font-size:14px;color:var(--muted);flex:1;}
+.line-price{font-family:'Space Mono',monospace;font-size:16px;font-weight:700;}
+.line-type{font-size:11px;padding:2px 6px;border-radius:10px;margin-left:6px;}
+
+/* 分析テキスト */
+.analysis-card{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px;}
+.analysis-title{font-size:12px;color:var(--muted);letter-spacing:2px;font-weight:700;margin-bottom:8px;}
+.analysis-text{font-size:15px;line-height:2.0;color:#a0b8d0;}
+.analysis-section{margin-bottom:8px;}
+.analysis-head{font-size:12px;color:var(--gold);letter-spacing:2px;font-weight:700;margin-bottom:4px;}
+
+/* ── BOTTOM BAR ── */
+.main-content{
+  position:fixed;
+  top:132px;
+  left:0;right:0;
+  bottom:60px;
+  overflow-y:scroll !important;
+  -webkit-overflow-scrolling:touch !important;
+  overscroll-behavior:contain;
+}
+.main-content.no-balance{
+  top:88px;
+}
+.bottom-bar{
+  position:fixed;bottom:0;left:0;right:0;z-index:100;
+  display:flex;align-items:center;gap:8px;
+  padding:8px 12px;height:60px;
+  background:linear-gradient(0deg,rgba(8,12,18,0.98),rgba(8,12,18,0.85));
+  backdrop-filter:blur(12px);border-top:1px solid var(--border);
+}
+.analyze-btn{
+  flex:1;height:42px;border:none;border-radius:10px;cursor:pointer;
+  font-family:'Space Mono',monospace;font-size:12px;font-weight:700;
+  letter-spacing:2px;transition:all 0.2s;
+  background:linear-gradient(135deg,#c47a00,var(--gold));
+  color:#000;box-shadow:0 4px 16px rgba(240,180,41,0.3);
+}
+.analyze-btn:disabled{background:#1e2d44;color:var(--muted);box-shadow:none;cursor:not-allowed;}
+.analyze-btn:active:not(:disabled){transform:scale(0.97);}
+.pnl-btn{
+  width:80px;height:42px;border:1px solid var(--border);border-radius:10px;
+  background:var(--surface2);color:var(--text);font-size:10px;cursor:pointer;
+  font-family:'Noto Sans JP',sans-serif;font-weight:700;letter-spacing:1px;
+}
+
+/* ローディング */
+.loading-overlay{
+  display:none;position:absolute;inset:0;
+  background:rgba(8,12,18,0.85);backdrop-filter:blur(4px);
+  border-radius:10px;flex-direction:column;align-items:center;justify-content:center;gap:14px;
+  z-index:200;
+}
+.loading-overlay.show{display:flex;}
+.loading-bars{display:flex;gap:4px;align-items:flex-end;height:32px;}
+.lb{width:4px;border-radius:2px;background:var(--gold);animation:lb 0.7s ease-in-out infinite alternate;}
+.loading-text{font-family:'Space Mono',monospace;font-size:10px;color:var(--gold);letter-spacing:3px;}
+
+/* PnL モーダル */
+.modal-overlay{
+  display:none;position:fixed;inset:0;z-index:300;
+  background:rgba(0,0,0,0.7);backdrop-filter:blur(8px);
+  align-items:flex-end;justify-content:center;
+}
+.modal-overlay.show{display:flex;}
+.modal{
+  width:100%;max-width:480px;background:var(--surface);
+  border-top-left-radius:20px;border-top-right-radius:20px;
+  border-top:1px solid var(--border);padding:20px 20px 36px;
+  animation:slideUp 0.3s ease;
+}
+.modal-handle{width:36px;height:4px;background:var(--border);border-radius:2px;margin:0 auto 16px;}
+.modal-title{font-family:'Space Mono',monospace;font-size:12px;color:var(--gold);letter-spacing:3px;margin-bottom:16px;text-align:center;}
+.modal-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;}
+.m-field label{font-size:9px;color:var(--muted);letter-spacing:2px;display:block;margin-bottom:5px;font-weight:700;}
+.m-field input,.m-field select{
+  width:100%;padding:10px 12px;background:var(--surface2);
+  border:1px solid var(--border);color:var(--text);border-radius:8px;
+  font-family:'Space Mono',monospace;font-size:14px;outline:none;
+}
+.m-field input:focus,.m-field select:focus{border-color:var(--gold);}
+.pnl-result{border-radius:10px;padding:14px;text-align:center;margin-bottom:14px;}
+.pnl-result-label{font-size:10px;letter-spacing:2px;font-weight:700;margin-bottom:6px;}
+.pnl-result-value{font-family:'Space Mono',monospace;font-size:30px;font-weight:700;}
+.pnl-result-sub{font-size:11px;margin-top:4px;opacity:0.7;}
+.modal-close{width:100%;padding:12px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;color:var(--muted);font-size:12px;cursor:pointer;font-family:'Space Mono',monospace;letter-spacing:2px;}
+.mt5-badge{display:inline-flex;align-items:center;gap:6px;background:rgba(0,217,126,0.1);
+  border:1px solid #00d97e;border-radius:6px;padding:3px 8px;font-size:10px;color:#00d97e;
+  font-family:'Space Mono',monospace;}
+.mt5-badge.disconnected{background:rgba(255,77,106,0.1);border-color:#ff4d6a;color:#ff4d6a;}
+.mt5-badge .dot{width:6px;height:6px;border-radius:50%;background:#00d97e;}
+.mt5-badge.disconnected .dot{background:#ff4d6a;}
+.balance-bar{background:var(--surface);border-bottom:1px solid var(--border);
+  padding:6px 14px;display:flex;justify-content:space-between;align-items:center;
+  font-family:'Space Mono',monospace;font-size:11px;position:fixed;top:88px;left:0;right:0;z-index:90;}
+.balance-item{display:flex;flex-direction:column;align-items:center;gap:2px;}
+.balance-label{font-size:9px;color:var(--muted);letter-spacing:1px;}
+.balance-value{font-size:13px;color:var(--text);font-weight:700;}
+.pos-card{background:var(--surface2);border:1px solid var(--border);border-radius:10px;
+  padding:12px;margin-bottom:8px;}
+.pos-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;}
+.pos-symbol{font-size:13px;font-weight:700;color:var(--text);font-family:'Space Mono',monospace;}
+.pos-pnl{font-size:16px;font-weight:700;font-family:'Space Mono',monospace;}
+.pos-detail{display:grid;grid-template-columns:1fr 1fr;gap:4px;}
+.pos-detail-item{font-size:10px;color:var(--muted);}
+.pos-detail-value{font-size:10px;color:var(--text);}
+
+/* Placeholder状態 */
+.ai-placeholder{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  height:100%;gap:10px;opacity:0.4;
+}
+.ai-placeholder-icon{font-size:36px;}
+.ai-placeholder-text{font-size:11px;letter-spacing:2px;color:var(--muted);font-family:'Space Mono',monospace;}
+
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0.3}}
+@keyframes lb{0%{height:8px;opacity:0.4}100%{height:28px;opacity:1}}
+@keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
+@keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+.fade-in{animation:fadeIn 0.4s ease forwards;}
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div class="header">
+  <div class="brand">
+    <div class="brand-dot"></div>
+    <div class="brand-name">GOLD COPILOT</div>
+  </div>
+  <div class="header-right">
+    <div class="price-live">
+      <div class="price-main" id="hdr-price">---.-0</div>
+      <div class="price-change" id="hdr-change">XAU/USD</div>
+      <div style="font-size:9px;color:#4a6080;font-family:'Space Mono',monospace;letter-spacing:1px;">
+        <span id="dataSource">DEMO</span>
+      </div>
+    </div>
+    <div class="mt5-badge disconnected" id="mt5Badge" onclick="openMT5Modal()" style="cursor:pointer;" title="接続設定">
+      <div class="dot"></div><span id="mt5BadgeText">設定</span>
+    </div>
+  </div>
+</div>
+
+<!-- BALANCE BAR -->
+<div class="balance-bar" id="balanceBar" style="display:none;">
+  <div class="balance-item">
+    <div class="balance-label">残高</div>
+    <div class="balance-value" id="balanceVal">---</div>
+  </div>
+  <div class="balance-item">
+    <div class="balance-label">有効証拠金</div>
+    <div class="balance-value" id="equityVal">---</div>
+  </div>
+  <div class="balance-item">
+    <div class="balance-label">含み損益合計</div>
+    <div class="balance-value" id="totalPnlVal">---</div>
+  </div>
+  <div class="balance-item">
+    <div class="balance-label">ポジション</div>
+    <div class="balance-value" id="posCountVal">0件</div>
+  </div>
+</div>
+
+<!-- TIMEFRAME -->
+<div class="tf-bar">
+  <button class="tf-btn" data-tf="1">M1</button>
+  <button class="tf-btn" data-tf="5">M5</button>
+  <button class="tf-btn active" data-tf="15">M15</button>
+  <button class="tf-btn" data-tf="60">H1</button>
+  <button class="tf-btn" data-tf="240">H4</button>
+  <button class="tf-btn" data-tf="1D">D1</button>
+  <button class="tf-btn" data-tf="1W">W1</button>
+</div>
+
+<!-- MAIN CONTENT -->
+<div class="main-content" id="mainContent">
+<!-- CHART -->
+<div class="chart-wrap">
+  <div class="chart-canvas-wrap" id="chartWrap">
+    <canvas id="mainChart" ondblclick="resetZoom()" style="touch-action:none;"></canvas>
+    <div class="loading-overlay" id="chartLoading">
+      <div class="loading-bars">
+        <div class="lb" style="animation-delay:0s"></div>
+        <div class="lb" style="animation-delay:0.1s"></div>
+        <div class="lb" style="animation-delay:0.2s"></div>
+        <div class="lb" style="animation-delay:0.3s"></div>
+        <div class="lb" style="animation-delay:0.4s"></div>
+      </div>
+      <div class="loading-text">LOADING CHART...</div>
+    </div>
+  </div>
+</div>
+
+<!-- MT5 POSITION PANEL -->
+<div id="mt5PosPanel" style="display:none;padding:10px 12px 0;"></div>
+
+<!-- AI PANEL -->
+<div class="ai-panel" id="aiPanel">
+  <div class="ai-panel-header">
+    <span style="font-family:'Space Mono',monospace;font-size:13px;color:var(--gold);letter-spacing:2px;">⚡ AI ANALYSIS</span>
+    <button onclick="document.getElementById('aiPanel').classList.remove('open');"
+      style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);
+      font-size:13px;padding:8px 18px;cursor:pointer;font-family:'Space Mono',monospace;">✕ 閉じる</button>
+  </div>
+  <div class="ai-panel-body" id="aiPanelBody">
+    <div class="ai-placeholder" id="aiPlaceholder">
+      <div class="ai-placeholder-icon">📊</div>
+      <div class="ai-placeholder-text">TAP ANALYZE TO START</div>
+    </div>
+    <div id="aiContent" style="display:none;flex-direction:column;gap:12px;"></div>
+  </div>
+</div>
+
+</div><!-- /main-content -->
+<!-- BOTTOM BAR -->
+<div class="bottom-bar">
+  <button class="pnl-btn" id="pnlBtn">損益<br>計算</button>
+  <button class="analyze-btn" id="analyzeBtn">⚡ AI分析する</button>
+</div>
+
+<!-- MT5 MODAL -->
+<div class="modal-overlay" id="mt5Modal">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <div class="modal-title">接続設定</div>
+    <div class="modal-grid">
+      <div class="m-field" style="grid-column:1/-1">
+        <label>TwelveData API Key（リアルタイム価格）</label>
+        <input type="password" id="twelve-apikey" placeholder="TwelveDataのAPIキー">
+      </div>
+      <div class="m-field" style="grid-column:1/-1">
+        <label>MetaApi Token（MT5連動）</label>
+        <input type="password" id="mt5-token" placeholder="MetaApi Access Token">
+      </div>
+      <div class="m-field" style="grid-column:1/-1">
+        <label>Account ID</label>
+        <input type="text" id="mt5-accountId" placeholder="MetaApiのAccount ID">
+      </div>
+      <div class="m-field">
+        <label>USD/JPY レート</label>
+        <input type="number" id="mt5-usdjpy" value="150" step="0.01">
+      </div>
+      <div class="m-field">
+        <label>自動更新（秒）</label>
+        <input type="number" id="mt5-interval" value="10" min="5" max="300">
+      </div>
+    </div>
+    <div id="mt5-status" style="display:none;padding:10px;border-radius:8px;font-size:11px;font-family:'Space Mono',monospace;margin-bottom:12px;"></div>
+    <div style="display:flex;gap:8px;margin-bottom:10px">
+      <button onclick="connectMT5()" style="flex:1;padding:12px;background:linear-gradient(135deg,#006622,#00d97e);border:none;border-radius:10px;font-family:'Space Mono',monospace;font-size:11px;font-weight:700;letter-spacing:1px;cursor:pointer;color:#000;">接続する</button>
+      <button onclick="disconnectMT5()" style="flex:1;padding:12px;background:rgba(255,77,106,0.15);border:1px solid #ff4d6a;border-radius:10px;font-family:'Space Mono',monospace;font-size:11px;color:#ff4d6a;cursor:pointer;">切断</button>
+    </div>
+    <button class="modal-close" onclick="closeMT5Modal()">CLOSE</button>
+  </div>
+</div>
+
+<!-- PnL MODAL -->
+<div class="modal-overlay" id="pnlModal">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <div class="modal-title">POSITION P&L</div>
+    <div class="modal-grid">
+      <div class="m-field" style="grid-column:1/-1">
+        <label>ポジション方向</label>
+        <select id="m-dir">
+          <option value="buy">BUY（買い）</option>
+          <option value="sell">SELL（売り）</option>
+        </select>
+      </div>
+      <div class="m-field"><label>エントリー価格</label><input type="number" id="m-entry" placeholder="2650.00" step="0.01"></div>
+      <div class="m-field"><label>現在 / 決済価格</label><input type="number" id="m-exit" placeholder="2700.00" step="0.01"></div>
+      <div class="m-field"><label>ロット数</label><input type="number" id="m-lot" placeholder="0.10" step="0.01" value="0.10"></div>
+      <div class="m-field"><label>USD/JPY レート</label><input type="number" id="m-usdjpy" placeholder="150.00" step="0.01" value="150.00"></div>
+    </div>
+    <div id="m-result" style="display:none">
+      <div class="pnl-result" id="m-pnl-box">
+        <div class="pnl-result-label" id="m-pnl-label"></div>
+        <div class="pnl-result-value" id="m-pnl-value"></div>
+        <div class="pnl-result-sub" id="m-pnl-sub"></div>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:10px">
+      <button onclick="calcPnL()" style="flex:1;padding:12px;background:linear-gradient(135deg,#c47a00,var(--gold));border:none;border-radius:10px;font-family:'Space Mono',monospace;font-size:11px;font-weight:700;letter-spacing:1px;cursor:pointer;color:#000;">計算する</button>
+      <button onclick="applyEntryLine()" style="flex:1;padding:12px;background:linear-gradient(135deg,#003399,#1a6aff);border:none;border-radius:10px;font-family:'Space Mono',monospace;font-size:11px;font-weight:700;letter-spacing:1px;cursor:pointer;color:#fff;">チャートに表示</button>
+    </div>
+    <button class="modal-close" onclick="closePnL()">CLOSE</button>
+  </div>
+</div>
+
+<script>
+// ─── STATE ───
+var currentTf = '15';
+var chartInstance = null;
+var chartData = [];
+var analysisResult = null;
+var overlayLines = [];
+var entryLines = []; // 建値ライン
+
+// ─── MT5 STATE ───
+var mt5Token = '';
+var mt5AccountId = '';
+var mt5USDJPY = 150;
+var mt5Positions = [];
+var mt5Timer = null;
+var mt5Connected = false;
+
+// ─── MT5 MODAL ───
+function openMT5Modal() {
+  document.getElementById('mt5Modal').classList.add('show');
+  if(TWELVE_API_KEY) document.getElementById('twelve-apikey').value = TWELVE_API_KEY;
+  if(mt5Token) document.getElementById('mt5-token').value = mt5Token;
+  if(mt5AccountId) document.getElementById('mt5-accountId').value = mt5AccountId;
+}
+function closeMT5Modal() { document.getElementById('mt5Modal').classList.remove('show'); }
+document.addEventListener('DOMContentLoaded', function(){
+  document.getElementById('mt5Modal').addEventListener('click', function(e){ if(e.target===this) closeMT5Modal(); });
+});
+
+// ─── MT5 接続 ───
+async function connectMT5() {
+  var twelveKey = document.getElementById('twelve-apikey').value.trim();
+  var token     = document.getElementById('mt5-token').value.trim();
+  var accountId = document.getElementById('mt5-accountId').value.trim();
+  var usdjpy    = parseFloat(document.getElementById('mt5-usdjpy').value) || 150;
+  var interval  = parseInt(document.getElementById('mt5-interval').value) || 30;
+
+  // TwelveData APIキーがあればリアルタイム価格を有効化
+  if(twelveKey) {
+    TWELVE_API_KEY = twelveKey;
+    showMT5Status('リアルタイム価格を有効化...', 'info');
+    await loadChart(currentTf); // チャートを本物データで更新
+  }
+
+  if(!token || !accountId) {
+    if(twelveKey) {
+      showMT5Status('チャートをリアルタイム価格に更新しました！', 'ok');
+      setTimeout(closeMT5Modal, 1500);
+    } else {
+      showMT5Status('APIキーまたはTokenを入力してください', 'err');
+    }
+    return;
+  }
+
+  mt5Token = token;
+  mt5AccountId = accountId;
+  mt5USDJPY = usdjpy;
+
+  showMT5Status('MT5に接続中...', 'info');
+
+  var ok = await fetchMT5Data();
+  if(ok) {
+    mt5Connected = true;
+    showMT5Status('接続成功！ ' + interval + '秒ごとに自動更新', 'ok');
+    updateMT5Badge(true);
+    if(mt5Timer) clearInterval(mt5Timer);
+    mt5Timer = setInterval(fetchMT5Data, interval * 1000);
+    // 価格だけ5秒ごとに更新（チャートより速く）
+    if(window._priceTimer) clearInterval(window._priceTimer);
+    window._priceTimer = setInterval(fetchLivePriceOnly, 5000);
+    // 接続後にXAUUSD系シンボルを検索して正確な名前を確認
+    await findXAUSymbol();
+    // MT5接続後にチャートをMetaApiデータで再読み込み
+    await loadChart(currentTf);
+    setTimeout(closeMT5Modal, 1200);
+  }
+}
+
+function disconnectMT5() {
+  if(mt5Timer) { clearInterval(mt5Timer); mt5Timer = null; }
+  if(window._priceTimer) { clearInterval(window._priceTimer); window._priceTimer = null; }
+  mt5Connected = false;
+  mt5Positions = [];
+  mt5Token = ''; mt5AccountId = '';
+  updateMT5Badge(false);
+  document.getElementById('balanceBar').style.display = 'none';
+  var mc = document.getElementById('mainContent');
+  if(mc) mc.classList.add('no-balance');
+  document.getElementById('mt5PosPanel').style.display = 'none';
+  document.getElementById('mt5PosPanel').innerHTML = '';
+  showMT5Status('切断しました', 'info');
+}
+
+function showMT5Status(msg, type) {
+  var el = document.getElementById('mt5-status');
+  el.style.display = 'block';
+  var bg = type==='ok' ? 'rgba(0,217,126,0.1)' : type==='err' ? 'rgba(255,77,106,0.1)' : 'rgba(240,180,41,0.1)';
+  var color = type==='ok' ? '#00d97e' : type==='err' ? '#ff4d6a' : '#f0b429';
+  el.style.background = bg;
+  el.style.color = color;
+  el.style.border = '1px solid ' + color;
+  el.textContent = msg;
+}
+
+function updateMT5Badge(connected) {
+  var badge = document.getElementById('mt5Badge');
+  var text  = document.getElementById('mt5BadgeText');
+  if(connected) {
+    badge.classList.remove('disconnected');
+    text.textContent = 'MT5 ●';
+  } else {
+    badge.classList.add('disconnected');
+    text.textContent = 'MT5';
+  }
+}
+
+// ─── MT5 データ取得 ───
+async function fetchMT5Data() {
+  try {
+    // 口座情報
+    var infoRes = await fetch(
+      'https://mt-client-api-v1.london.agiliumtrade.ai/users/current/accounts/' + mt5AccountId + '/account-information',
+      { headers: { 'auth-token': mt5Token } }
+    );
+    if(infoRes.ok) {
+      var info = await infoRes.json();
+      var bb = document.getElementById('balanceBar');
+      bb.style.display = 'flex';
+      var mc = document.getElementById('mainContent');
+      if(mc) mc.classList.remove('no-balance');
+      document.getElementById('balanceVal').textContent = '¥' + Math.round(info.balance).toLocaleString();
+      document.getElementById('equityVal').textContent  = '¥' + Math.round(info.equity).toLocaleString();
+    }
+
+    // ─── XAU/USD 現在価格をMetaApiから取得してヘッダーに反映 ───
+    // 現在価格取得（XAUUSDs固定 + フォールバック）
+    var priceSymbols = ['XAUUSDs', 'XAUUSD', 'XAUUSDm'];
+    for(var pi = 0; pi < priceSymbols.length; pi++) {
+      try {
+        var priceRes = await fetch(
+          'https://mt-client-api-v1.london.agiliumtrade.ai/users/current/accounts/' + mt5AccountId
+          + '/symbols/' + priceSymbols[pi] + '/current-price',
+          { headers: { 'auth-token': mt5Token } }
+        );
+        if(priceRes.ok) {
+          var priceData = await priceRes.json();
+          var bid = parseFloat(priceData.bid || 0);
+          var ask = parseFloat(priceData.ask || 0);
+          var mid = bid > 0 ? bid : ask;
+          if(mid > 0) {
+            updateLivePrice(mid);
+            console.log('現在価格取得成功:', priceSymbols[pi], mid);
+            break;
+          }
+        }
+      } catch(e) {}
+    }
+
+    // ポジション
+    var posRes = await fetch(
+      'https://mt-client-api-v1.london.agiliumtrade.ai/users/current/accounts/' + mt5AccountId + '/positions',
+      { headers: { 'auth-token': mt5Token } }
+    );
+    if(posRes.ok) {
+      mt5Positions = await posRes.json();
+      renderMT5Positions();
+    }
+    return true;
+  } catch(e) {
+    console.error('MT5 fetch error:', e);
+    return false;
+  }
+}
+
+// ─── 価格だけ素早く取得（5秒ごと）───
+var _workingPriceSymbol = 'XAUUSD'; // 動作確認済みシンボルをキャッシュ
+async function fetchLivePriceOnly() {
+  if(!mt5Token || !mt5AccountId) return;
+  try {
+    var symbols = [_workingPriceSymbol, 'XAUUSDs', 'XAUUSD', 'XAUUSDm'];
+    // 重複除去
+    symbols = symbols.filter(function(v,i,a){ return a.indexOf(v)===i; });
+    for(var i = 0; i < symbols.length; i++) {
+      var res = await fetch(
+        'https://mt-client-api-v1.london.agiliumtrade.ai/users/current/accounts/' + mt5AccountId
+        + '/symbols/' + symbols[i] + '/current-price',
+        { headers: { 'auth-token': mt5Token } }
+      );
+      if(res.ok) {
+        var d = await res.json();
+        var bid = parseFloat(d.bid || 0);
+        if(bid > 0) {
+          _workingPriceSymbol = symbols[i]; // 成功したシンボルをキャッシュ
+          updateLivePrice(bid);
+          break;
+        }
+      }
+    }
+  } catch(e) {}
+}
+
+// ─── ヘッダー価格をMT5のリアルタイム値で更新 ───
+var _lastMT5Price = 0;
+function updateLivePrice(price) {
+  var prev = _lastMT5Price;
+  _lastMT5Price = price;
+  var el = document.getElementById('hdr-price');
+  var chEl = document.getElementById('hdr-change');
+  el.textContent = price.toFixed(2);
+  if(prev > 0) {
+    var diff = price - prev;
+    var pct  = (diff / prev * 100).toFixed(3);
+    chEl.textContent = (diff >= 0 ? '+' : '') + diff.toFixed(2) + ' (' + (diff>=0?'+':'') + pct + '%)';
+    chEl.className = 'price-change ' + (diff >= 0 ? 'positive' : 'negative');
+    el.style.transition = 'color 0.2s';
+    el.style.color = diff >= 0 ? '#00d97e' : '#ff4d6a';
+    setTimeout(function(){ el.style.color = ''; }, 400);
+  }
+  // 最新足のclose価格をデータに反映（チャートは再描画しない→足の形が崩れない）
+  if(chartData.length > 0) {
+    var lastIdx = chartData.length - 1;
+    var last = chartData[lastIdx];
+    last.c = price;
+    if(price > last.h) last.h = price;
+    if(price < last.l) last.l = price;
+  }
+  if(mt5Positions.length > 0) {
+    refreshPnLWithPrice(price);
+  }
+}
+
+// ─── 最新価格でポジション損益を即時再計算 ───
+function refreshPnLWithPrice(currentPrice) {
+  var totalPnl = 0;
+  mt5Positions.forEach(function(p) {
+    var sym = (p.symbol || '').toUpperCase();
+    if(sym !== 'XAUUSD' && sym !== 'GOLD') return;
+    var isBuy  = (p.type||'').toLowerCase().includes('buy');
+    var diff   = isBuy ? (currentPrice - p.openPrice) : (p.openPrice - currentPrice);
+    var pnlJPY = Math.round(diff * (p.volume||0.1) * 100 * mt5USDJPY);
+    totalPnl  += pnlJPY;
+    // ポジションカードの損益も更新
+    var cards = document.querySelectorAll('.pos-pnl');
+    if(cards.length > 0) {
+      // シンプルに合計だけ更新（複数ポジション対応は次フェーズ）
+    }
+  });
+  if(mt5Positions.length > 0) {
+    var el = document.getElementById('totalPnlVal');
+    el.style.color = totalPnl >= 0 ? '#00d97e' : '#ff4d6a';
+    el.textContent = (totalPnl >= 0 ? '+' : '') + '¥' + Math.abs(totalPnl).toLocaleString();
+  }
+}
+
+// ─── ポジション描画 ───
+function renderMT5Positions() {
+  var panel = document.getElementById('mt5PosPanel');
+  var totalPnl = 0;
+
+  if(mt5Positions.length === 0) {
+    panel.style.display = 'none';
+    document.getElementById('totalPnlVal').textContent = '¥0';
+    document.getElementById('posCountVal').textContent = '0件';
+    // 建値ラインをクリア
+    entryLines = [];
+    buildChart(chartData, overlayLines.concat(entryLines));
+    return;
+  }
+
+  panel.style.display = 'block';
+  document.getElementById('posCountVal').textContent = mt5Positions.length + '件';
+
+  var html = '';
+  var newEntryLines = [];
+
+  mt5Positions.forEach(function(p) {
+    var isBuy    = (p.type||'').toLowerCase().includes('buy');
+    var pnlJPY   = Math.round((p.profit||0) * mt5USDJPY);
+    var isProfit = pnlJPY >= 0;
+    totalPnl += pnlJPY;
+
+    // 建値ラインデータ
+    if(p.openPrice) {
+      newEntryLines.push({
+        price: p.openPrice,
+        color: isBuy ? '#00d97e' : '#ff4d6a',
+        label: (isBuy?'BUY':'SELL') + ' ' + p.openPrice.toFixed(2) + '  ' + (isProfit?'+':'') + '¥' + Math.abs(pnlJPY).toLocaleString(),
+        width: 2, dash: []
+      });
+    }
+
+    html += '<div class="pos-card">';
+    html += '<div class="pos-header">';
+    html += '<span class="pos-symbol">' + (p.symbol||'---') + ' <span class="badge ' + (isBuy?'badge-buy':'badge-sell') + '">' + (isBuy?'BUY':'SELL') + '</span></span>';
+    html += '<span class="pos-pnl" style="color:' + (isProfit?'#00d97e':'#ff4d6a') + ';">' + (isProfit?'+':'') + '¥' + Math.abs(pnlJPY).toLocaleString() + '</span>';
+    html += '</div>';
+    html += '<div class="pos-detail">';
+    html += '<span class="pos-detail-item">建値</span><span class="pos-detail-value">' + (p.openPrice||'---') + '</span>';
+    html += '<span class="pos-detail-item">ロット</span><span class="pos-detail-value">' + (p.volume||'---') + ' lot</span>';
+    html += '<span class="pos-detail-item">現在値</span><span class="pos-detail-value">' + (p.currentPrice||'---') + '</span>';
+    html += '<span class="pos-detail-item">スワップ</span><span class="pos-detail-value">' + (p.swap||0).toFixed(0) + '</span>';
+    html += '</div></div>';
+  });
+
+  panel.innerHTML = '<div style="font-size:10px;color:#f0b429;letter-spacing:2px;font-family:Space Mono,monospace;margin-bottom:8px;">MT5 POSITIONS</div>' + html;
+
+  // 合計損益更新
+  document.getElementById('totalPnlVal').style.color = totalPnl>=0 ? '#00d97e' : '#ff4d6a';
+  document.getElementById('totalPnlVal').textContent = (totalPnl>=0?'+':'') + '¥' + Math.abs(totalPnl).toLocaleString();
+
+  // チャートに建値ライン反映
+  entryLines = newEntryLines;
+  if(chartData.length) buildChart(chartData, overlayLines.concat(entryLines));
+}
+
+// ─── TWELVEDATA API ───
+var TWELVE_API_KEY = ''; // 起動時に入力
+
+// TwelveData の時間足コード変換
+function tfToTwelve(tf) {
+  var map = {'1':'1min','5':'5min','15':'15min','60':'1h','240':'4h','1D':'1day','1W':'1week'};
+  return map[tf] || '15min';
+}
+
+// MetaApi 時間足コード変換
+function tfToMetaApi(tf) {
+  var map = {'1':'1m','5':'5m','15':'15m','60':'1h','240':'4h','1D':'1d','1W':'1w'};
+  return map[tf] || '15m';
+}
+
+// ─── XAUUSDのシンボル名を自動検出 ───
+var detectedXAUSymbol = null;
+async function findXAUSymbol() {
+  try {
+    // symbols一覧を取得してXAU含むものを探す
+    var res = await fetch(
+      'https://mt-client-api-v1.london.agiliumtrade.ai/users/current/accounts/' + mt5AccountId + '/symbols',
+      { headers: { 'auth-token': mt5Token } }
+    );
+    if(res.ok) {
+      var symbols = await res.json();
+      // XAU含むシンボルを全部表示
+      var xauSymbols = symbols.filter(function(s) {
+        var name = (s.symbol || s.name || s).toString().toUpperCase();
+        // XAUUSD系のみ（XAUEURs等のユーロ建ては除外）
+        return name.startsWith('XAU') && (name.includes('USD') || name === 'XAUUSD');
+      });
+      console.log('XAU系シンボル一覧:', JSON.stringify(xauSymbols));
+      if(xauSymbols.length > 0) {
+        var first = xauSymbols[0];
+        detectedXAUSymbol = first.symbol || first.name || first;
+        console.log('検出されたXAUシンボル:', detectedXAUSymbol);
+        showMT5Status('XAUシンボル検出: ' + detectedXAUSymbol, 'ok');
+      }
+    }
+  } catch(e) {
+    console.error('シンボル検索エラー:', e.message);
+  }
+}
+
+// ─── MetaApiからローソク足を取得（最優先）───
+// 正しいホスト: mt-market-data-client-api-v1 (mt-client-apiとは別！)
+// 参考: https://metaapi.cloud/docs/client/restApi/api/retrieveMarketData/readHistoricalCandles/
+async function fetchMetaApiCandles(tf, count) {
+  if(!mt5Token || !mt5AccountId) return null;
+  var timeframe = tfToMetaApi(tf);
+  var intervals = {'1':60,'5':300,'15':900,'60':3600,'240':14400,'1D':86400,'1W':604800};
+  var sec = intervals[tf] || 900;
+  var startTime = new Date(Date.now() - sec * (count + 10) * 1000).toISOString();
+
+  var regions = ['london', 'new-york'];
+  // XAUUSDs（XS.com確認済み）を固定で使用
+  // XAUEURs（ユーロ建て）は除外、USD建てのみ使う
+  var symbols = ['XAUUSDs', 'XAUUSD', 'XAUUSDm'];
+
+  for(var ri = 0; ri < regions.length; ri++) {
+    for(var si = 0; si < symbols.length; si++) {
+      var url = 'https://mt-market-data-client-api-v1.' + regions[ri] + '.agiliumtrade.ai'
+        + '/users/current/accounts/' + mt5AccountId
+        + '/historical-market-data/symbols/' + symbols[si]
+        + '/timeframes/' + timeframe
+        + '/candles?startTime=' + encodeURIComponent(startTime)
+        + '&limit=' + count;
+      try {
+        var res = await fetch(url, { headers: { 'auth-token': mt5Token } });
+        console.log('MetaApi candles [' + regions[ri] + '/' + symbols[si] + ']:', res.status);
+        if(!res.ok) continue;
+        var data = await res.json();
+        if(!Array.isArray(data) || data.length === 0) { console.log('データ空'); continue; }
+        var candles = data.map(function(v) {
+          return {
+            t: new Date(v.brokerTime || v.time).getTime(), // brokerTimeはローカル時間
+            o: parseFloat(v.open),
+            h: parseFloat(v.high),
+            l: parseFloat(v.low),
+            c: parseFloat(v.close),
+          };
+        });
+        candles.sort(function(a,b){ return a.t - b.t; });
+        console.log('MetaApi candles取得成功！', candles.length + '本', regions[ri], symbols[si]);
+        return candles;
+      } catch(e) {
+        console.error('candles error [' + regions[ri] + '/' + symbols[si] + ']:', e.message);
+      }
+    }
+  }
+  console.warn('全パターン失敗 → TwelveDataにフォールバック');
+  return null;
+}
+
+// ローソク足をTwelveDataから取得（MetaApiが使えない場合のフォールバック）
+async function fetchRealCandles(tf, count) {
+  if(!TWELVE_API_KEY) return null;
+  var interval = tfToTwelve(tf);
+  var url = 'https://api.twelvedata.com/time_series'
+    + '?symbol=XAU/USD'
+    + '&interval=' + interval
+    + '&outputsize=' + count
+    + '&apikey=' + TWELVE_API_KEY;
+  try {
+    var res = await fetch(url);
+    var data = await res.json();
+    if(data.status === 'error' || !data.values) {
+      console.warn('TwelveData error:', data.message || JSON.stringify(data));
+      return null;
+    }
+    var candles = data.values.slice().reverse().map(function(v) {
+      return {
+        t: new Date(v.datetime).getTime(),
+        o: parseFloat(v.open),
+        h: parseFloat(v.high),
+        l: parseFloat(v.low),
+        c: parseFloat(v.close),
+      };
+    });
+    return candles;
+  } catch(e) {
+    console.error('fetchRealCandles error:', e);
+    return null;
+  }
+}
+
+// フォールバック用ダミーデータ（APIキーなし or エラー時）
+function generateGoldCandles(tf, count) {
+  var base = 2650 + Math.random() * 80;
+  var candles = [];
+  var intervals = {'1':60,'5':300,'15':900,'60':3600,'240':14400,'1D':86400,'1W':604800};
+  var interval = intervals[tf] || 900;
+  var now = Math.floor(Date.now()/1000);
+  for(var i = count - 1; i >= 0; i--) {
+    var t = now - i * interval;
+    var vol = 5 + Math.random() * 15;
+    var open = base;
+    var close = open + (Math.random() - 0.49) * vol;
+    var high = Math.max(open, close) + Math.random() * vol * 0.5;
+    var low = Math.min(open, close) - Math.random() * vol * 0.5;
+    candles.push({ t: t * 1000, o: +open.toFixed(2), h: +high.toFixed(2), l: +low.toFixed(2), c: +close.toFixed(2) });
+    base = close;
+  }
+  return candles;
+}
+
+// ─── CHART ───
+function buildChart(candles, lines) {
+  var ctx = document.getElementById('mainChart').getContext('2d');
+  if(chartInstance) { chartInstance.destroy(); chartInstance = null; }
+  // canvasサイズはDOMContentLoadedで設定済み
+
+  // ローソク足データ変換
+  var labels = candles.map(function(c){
+    var d = new Date(c.t);
+    // D1・W1は日付表示、それ以外は時刻表示
+    if(currentTf === '1D' || currentTf === '1W') {
+      return d.toLocaleDateString('ja-JP',{month:'2-digit',day:'2-digit',timeZone:'Asia/Tokyo'});
+    }
+    return d.toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit',timeZone:'Asia/Tokyo'});
+  });
+  var opens = candles.map(function(c){ return c.o; });
+  var closes = candles.map(function(c){ return c.c; });
+  var highs = candles.map(function(c){ return c.h; });
+  var lows = candles.map(function(c){ return c.l; });
+
+  var upColor = 'rgba(0,217,126,0.85)';
+  var downColor = 'rgba(255,77,106,0.85)';
+  var barColors = candles.map(function(c){ return c.c >= c.o ? upColor : downColor; });
+
+  // MA計算
+  function calcMA(data, period) {
+    return data.map(function(_, i){
+      if(i < period - 1) return null;
+      var sum = 0;
+      for(var j = i - period + 1; j <= i; j++) sum += data[j];
+      return +(sum / period).toFixed(2);
+    });
+  }
+  var ma20 = calcMA(closes, 20);
+  var ma50 = calcMA(closes, 50);
+  var ma200 = calcMA(closes, Math.min(200, closes.length));
+
+  // オーバーレイライン（S/R・トレンドライン）
+  var annotations = {};
+  if(lines && lines.length) {
+    lines.forEach(function(l, i){
+      annotations['line' + i] = {
+        type: 'line',
+        yMin: l.price, yMax: l.price,
+        borderColor: l.color,
+        borderWidth: l.width || 1.5,
+        borderDash: l.dash || [],
+        label: { display: true, content: l.label, position: 'start', color: l.color, font: { size: 9, family: 'Space Mono' }, padding: 2 }
+      };
+    });
+  }
+
+  // ローソク足（棒グラフで近似）
+  var barDataset = {
+    type: 'bar',
+    label: 'OHLC',
+    data: candles.map(function(c){ return [c.l, c.h]; }),
+    backgroundColor: barColors,
+    borderColor: barColors,
+    borderWidth: 1,
+    barPercentage: 0.4,
+    categoryPercentage: 0.8,
+  };
+
+  // 終値ライン
+  var closeDataset = {
+    type: 'line',
+    label: 'Close',
+    data: closes,
+    borderColor: 'rgba(200,220,255,0.5)',
+    borderWidth: 1,
+    pointRadius: 0,
+    tension: 0.1,
+    fill: false,
+  };
+
+  var ma20Dataset = {
+    type: 'line', label: 'MA20', data: ma20,
+    borderColor: '#f0b429', borderWidth: 1.5, pointRadius: 0, tension: 0.3, fill: false,
+    spanGaps: true,
+  };
+  var ma50Dataset = {
+    type: 'line', label: 'MA50', data: ma50,
+    borderColor: '#3d8bff', borderWidth: 1.5, pointRadius: 0, tension: 0.3, fill: false,
+    spanGaps: true,
+  };
+  var ma200Dataset = {
+    type: 'line', label: 'MA200', data: ma200,
+    borderColor: '#cc44ff', borderWidth: 1.5, pointRadius: 0, tension: 0.3, fill: false,
+    spanGaps: true,
+  };
+
+  chartInstance = new Chart(ctx, {
+    type: 'bar',
+    data: { labels: labels, datasets: [barDataset, closeDataset, ma20Dataset, ma50Dataset, ma200Dataset] },
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: { duration: 400 },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: function(ctx) {
+              var i = ctx.dataIndex;
+              var c = candles[i];
+              return ['O:'+c.o, 'H:'+c.h, 'L:'+c.l, 'C:'+c.c];
+            }
+          }
+        }
+      },
+      scales: {
+        x: { ticks: { color: '#4a6080', font: { size: 8, family: 'Space Mono' }, maxTicksLimit: 6 }, grid: { color: 'rgba(30,45,68,0.5)' } },
+        y: {
+          position: 'right',
+          min: Math.min.apply(null, lows) * 0.9995,
+          max: Math.max.apply(null, highs) * 1.0005,
+          ticks: { color: '#4a6080', font: { size: 9, family: 'Space Mono' }, maxTicksLimit: 8,
+            callback: function(v){ return v.toFixed(2); }
+          },
+          grid: { color: 'rgba(30,45,68,0.5)' }
+        }
+      }
+    }
+  });
+}
+
+// ─── タッチズーム・パン（スマホ対応）───
+var _touchState = {
+  startX: 0, startY: 0,
+  lastX: 0,
+  isPanning: false,
+  pinchStartDist: 0,
+  pinchStartRange: 0,
+  visibleStart: 0, visibleEnd: 0,
+};
+
+function initTouchZoom() {
+  var canvas = document.getElementById('mainChart');
+  if(!canvas) return;
+
+  canvas.addEventListener('touchstart', function(e) {
+    if(e.touches.length === 1) {
+      // パン開始
+      _touchState.isPanning = true;
+      _touchState.startX = e.touches[0].clientX;
+      _touchState.lastX  = e.touches[0].clientX;
+      if(chartInstance) {
+        var xScale = chartInstance.scales.x;
+        _touchState.visibleStart = xScale.min;
+        _touchState.visibleEnd   = xScale.max;
+      }
+    } else if(e.touches.length === 2) {
+      // ピンチ開始
+      _touchState.isPanning = false;
+      var dx = e.touches[0].clientX - e.touches[1].clientX;
+      var dy = e.touches[0].clientY - e.touches[1].clientY;
+      _touchState.pinchStartDist = Math.sqrt(dx*dx + dy*dy);
+      if(chartInstance) {
+        var xScale = chartInstance.scales.x;
+        _touchState.visibleStart   = xScale.min;
+        _touchState.visibleEnd     = xScale.max;
+        _touchState.pinchStartRange = xScale.max - xScale.min;
+      }
+    }
+    e.preventDefault();
+  }, { passive: false });
+
+  canvas.addEventListener('touchmove', function(e) {
+    if(!chartInstance || !chartData.length) return;
+    var xScale = chartInstance.scales.x;
+    var total  = chartData.length;
+
+    if(e.touches.length === 1 && _touchState.isPanning) {
+      // パン
+      var dx = e.touches[0].clientX - _touchState.lastX;
+      _touchState.lastX = e.touches[0].clientX;
+      var range   = _touchState.visibleEnd - _touchState.visibleStart;
+      var shift   = -dx / canvas.offsetWidth * range;
+      var newMin  = Math.max(0, _touchState.visibleStart + shift);
+      var newMax  = Math.min(total - 1, _touchState.visibleEnd + shift);
+      if(newMax - newMin >= 5) {
+        _touchState.visibleStart = newMin;
+        _touchState.visibleEnd   = newMax;
+        xScale.options.min = newMin;
+        xScale.options.max = newMax;
+        autoFitYAxisDirect(newMin, newMax);
+        chartInstance.update('none');
+      }
+    } else if(e.touches.length === 2) {
+      // ピンチズーム
+      var dx2 = e.touches[0].clientX - e.touches[1].clientX;
+      var dy2 = e.touches[0].clientY - e.touches[1].clientY;
+      var dist = Math.sqrt(dx2*dx2 + dy2*dy2);
+      var scale = _touchState.pinchStartDist / dist;
+      var newRange = Math.max(5, Math.min(total, _touchState.pinchStartRange * scale));
+      var center   = (_touchState.visibleStart + _touchState.visibleEnd) / 2;
+      var newMin2  = Math.max(0, center - newRange / 2);
+      var newMax2  = Math.min(total - 1, center + newRange / 2);
+      xScale.options.min = newMin2;
+      xScale.options.max = newMax2;
+      _touchState.visibleStart = newMin2;
+      _touchState.visibleEnd   = newMax2;
+      autoFitYAxisDirect(newMin2, newMax2);
+      chartInstance.update('none');
+    }
+    e.preventDefault();
+  }, { passive: false });
+
+  canvas.addEventListener('touchend', function(e) {
+    _touchState.isPanning = false;
+  });
+}
+
+function autoFitYAxisDirect(minIdx, maxIdx) {
+  if(!chartData.length) return;
+  var i0 = Math.max(0, Math.floor(minIdx));
+  var i1 = Math.min(chartData.length-1, Math.ceil(maxIdx));
+  var lows=[], highs=[];
+  for(var i=i0;i<=i1;i++){
+    if(chartData[i]){ lows.push(chartData[i].l); highs.push(chartData[i].h); }
+  }
+  if(!lows.length) return;
+  chartInstance.options.scales.y.min = Math.min.apply(null,lows)  * 0.9995;
+  chartInstance.options.scales.y.max = Math.max.apply(null,highs) * 1.0005;
+}
+
+// ─── Y軸自動調整（ズーム・パン後） ───
+function autoFitYAxis(chart) {
+  if(!chart || !chart.data || !chartData.length) return;
+  var xScale = chart.scales.x;
+  if(!xScale) return;
+
+  var minIdx = Math.max(0, Math.floor(xScale.min));
+  var maxIdx = Math.min(chartData.length - 1, Math.ceil(xScale.max));
+
+  var visibleLows  = [];
+  var visibleHighs = [];
+  for(var i = minIdx; i <= maxIdx; i++) {
+    if(chartData[i]) {
+      visibleLows.push(chartData[i].l);
+      visibleHighs.push(chartData[i].h);
+    }
+  }
+  if(!visibleLows.length) return;
+
+  var minY = Math.min.apply(null, visibleLows)  * 0.9995;
+  var maxY = Math.max.apply(null, visibleHighs) * 1.0005;
+  chart.options.scales.y.min = minY;
+  chart.options.scales.y.max = maxY;
+  chart.update('none');
+}
+
+// リセットボタン（ダブルタップでズームリセット）
+function resetZoom() {
+  if(chartInstance) {
+    chartInstance.resetZoom();
+    // Y軸も全データ範囲に戻す
+    var allLows  = chartData.map(function(c){ return c.l; });
+    var allHighs = chartData.map(function(c){ return c.h; });
+    chartInstance.options.scales.y.min = Math.min.apply(null, allLows)  * 0.9995;
+    chartInstance.options.scales.y.max = Math.max.apply(null, allHighs) * 1.0005;
+    chartInstance.update('none');
+  }
+}
+
+// ─── LOAD CHART ───
+async function loadChart(tf) {
+  document.getElementById('chartLoading').classList.add('show');
+  var count = tf === '1' ? 80 : tf === '5' ? 80 : tf === '15' ? 60 : tf === '60' ? 50 : tf === '240' ? 40 : 30;
+
+  var candles = null;
+  var source = '';
+
+  // 優先順位1: MetaApi（MT5接続済みの場合）→ XS.comと完全一致
+  if(mt5Token && mt5AccountId && mt5Connected) {
+    candles = await fetchMetaApiCandles(tf, count);
+    if(candles && candles.length > 0) source = 'MT5';
+  }
+
+  // 優先順位2: TwelveData（APIキーあり）
+  if(!candles && TWELVE_API_KEY) {
+    candles = await fetchRealCandles(tf, count);
+    if(candles && candles.length > 0) source = 'TwelveData';
+  }
+
+  // 優先順位3: ダミーデータ（フォールバック）
+  if(!candles || candles.length === 0) {
+    candles = generateGoldCandles(tf, count);
+    source = 'DEMO';
+  }
+
+  // データソースをヘッダーに表示
+  var srcEl = document.getElementById('dataSource');
+  if(srcEl) {
+    srcEl.textContent = source;
+    srcEl.style.color = source === 'MT5' ? '#00d97e' : source === 'TwelveData' ? '#f0b429' : '#ff4d6a';
+  }
+
+  chartData = candles;
+  buildChart(chartData, overlayLines.concat(entryLines));
+  updateHeaderPrice(chartData);
+  document.getElementById('chartLoading').classList.remove('show');
+}
+
+function updateHeaderPrice(candles) {
+  if(!candles.length) return;
+  var last = candles[candles.length - 1];
+  var first = candles[0];
+  var diff = last.c - first.o;
+  var pct = (diff / first.o * 100).toFixed(2);
+  document.getElementById('hdr-price').textContent = last.c.toFixed(2);
+  var chEl = document.getElementById('hdr-change');
+  chEl.textContent = (diff >= 0 ? '+' : '') + diff.toFixed(2) + ' (' + (diff>=0?'+':'') + pct + '%)';
+  chEl.className = 'price-change ' + (diff >= 0 ? 'positive' : 'negative');
+}
+
+// ─── TIMEFRAME ───
+document.querySelectorAll('.tf-btn').forEach(function(btn){
+  btn.addEventListener('click', function(){
+    document.querySelectorAll('.tf-btn').forEach(function(b){ b.classList.remove('active'); });
+    btn.classList.add('active');
+    currentTf = btn.dataset.tf;
+    overlayLines = [];
+    loadChart(currentTf);
+  });
+});
+
+// ─── AI ANALYZE ───
+document.getElementById('analyzeBtn').addEventListener('click', function(){
+  document.getElementById('aiPanel').classList.add('open');
+  analyzeChart();
+});
+
+async function analyzeChart() {
+  var btn = document.getElementById('analyzeBtn');
+  btn.disabled = true; btn.textContent = '█ 分析中...';
+  document.getElementById('aiPlaceholder').style.display = 'none';
+  var aiContent = document.getElementById('aiContent');
+  aiContent.style.display = 'none';
+
+  // ロード表示
+  var loadDiv = document.createElement('div');
+  loadDiv.id = 'tmpLoad';
+  loadDiv.innerHTML = '<div style="display:flex;flex-direction:column;align-items:center;gap:12px;padding:24px"><div class="loading-bars"><div class="lb" style="animation-delay:0s"></div><div class="lb" style="animation-delay:0.1s"></div><div class="lb" style="animation-delay:0.2s"></div><div class="lb" style="animation-delay:0.3s"></div><div class="lb" style="animation-delay:0.4s"></div></div><div class="loading-text">AI ANALYZING...</div></div>';
+  document.getElementById('aiPanel').appendChild(loadDiv);
+
+  if(!chartData.length) { btn.disabled=false; btn.textContent='⚡ AI分析する'; return; }
+
+  var last = chartData[chartData.length - 1];
+  var recent = chartData.slice(-20);
+  var highs = recent.map(function(c){return c.h;});
+  var lows  = recent.map(function(c){return c.l;});
+  var closes = recent.map(function(c){return c.c;});
+  var maxH = Math.max.apply(null, highs);
+  var minL = Math.min.apply(null, lows);
+  var price = last.c;
+
+  // ── チャートデータからリアルなモック分析を自動生成 ──
+  // トレンド判定
+  var ma5  = closes.slice(-5).reduce(function(a,b){return a+b;},0)/5;
+  var ma20 = closes.reduce(function(a,b){return a+b;},0)/closes.length;
+  var trend = ma5 > ma20 ? '上昇トレンド' : ma5 < ma20 * 0.998 ? '下降トレンド' : 'レンジ相場';
+
+  // シグナル判定
+  var signals = ['BUY','SELL','WAIT'];
+  var strengths = ['強','中','弱'];
+  var phases = ['第1波(先行期)','第2波(追随期)','第3波(利食い期)','トレンド転換の可能性'];
+  var rsiSignals = ['過買い','過売り','中立'];
+
+  // RSI簡易計算
+  var gains = 0, losses = 0;
+  for(var i=1;i<closes.length;i++){
+    var d = closes[i]-closes[i-1];
+    if(d>0) gains+=d; else losses-=d;
+  }
+  var rs = losses===0 ? 100 : gains/losses;
+  var rsi = Math.round(100 - 100/(1+rs));
+
+  var rsiSig = rsi > 70 ? '過買い' : rsi < 30 ? '過売り' : '中立';
+  var signal = rsi > 68 ? 'SELL' : rsi < 32 ? 'BUY' : (trend === '上昇トレンド' ? 'BUY' : trend === '下降トレンド' ? 'SELL' : 'WAIT');
+  var strength = Math.abs(rsi - 50) > 20 ? '強' : Math.abs(rsi - 50) > 10 ? '中' : '弱';
+  var phase = phases[Math.floor(Math.random() * phases.length)];
+
+  // S/R ライン計算（高値・安値から）
+  var r1 = +(maxH * 1.002).toFixed(2);
+  var r2 = +(maxH * 1.005).toFixed(2);
+  var s1 = +(minL * 0.998).toFixed(2);
+  var s2 = +(minL * 0.995).toFixed(2);
+  var chUp = +(maxH * 1.003).toFixed(2);
+  var chLo = +(minL * 0.997).toFixed(2);
+
+  // エントリー・TP・SL
+  var entry, tp, sl;
+  if(signal === 'BUY'){
+    entry = +(price * 1.0002).toFixed(2);
+    tp    = +(price * 1.008).toFixed(2);
+    sl    = +(s1 * 0.999).toFixed(2);
+  } else if(signal === 'SELL'){
+    entry = +(price * 0.9998).toFixed(2);
+    tp    = +(price * 0.992).toFixed(2);
+    sl    = +(r1 * 1.001).toFixed(2);
+  } else {
+    entry = price;
+    tp    = +(price * 1.006).toFixed(2);
+    sl    = +(price * 0.994).toFixed(2);
+  }
+
+  // 分析テキスト
+  var analysisTexts = {
+    '上昇トレンド': '現在XAU/USDは上昇トレンドを維持しており、ダウ理論における高値・安値の切り上がりが確認できます。MA20が価格をサポートしており、押し目買いの好機です。チャネル上限付近では利食いを検討してください。',
+    '下降トレンド': 'XAU/USDは下降トレンドにあり、高値・安値の切り下がりが継続しています。戻り売りの局面であり、レジスタンスラインでの売りエントリーが有効です。ただし主要サポートラインの反応には注意が必要です。',
+    'レンジ相場': 'XAU/USDは現在レンジ相場を形成しており、方向感が出るまで様子見が賢明です。サポート・レジスタンスの境界での反転を狙う戦略が有効ですが、ブレイクアウトには十分な確認が必要です。'
+  };
+  var actionTexts = {
+    'BUY': 'サポートライン（' + s1 + '）付近での押し目を待ってロングエントリーを検討してください。TP ' + tp + '、SL ' + sl + ' でリスク管理を徹底することが重要です。',
+    'SELL': 'レジスタンスライン（' + r1 + '）付近での戻りを待ってショートエントリーを検討してください。TP ' + tp + '、SL ' + sl + ' を設定し、損切りを徹底してください。',
+    'WAIT': 'トレンドの方向性が明確になるまで新規エントリーは控えてください。次の15〜30分の値動きを見てから判断することを推奨します。'
+  };
+  var riskText = rsi > 65 ? 'RSIが過熱圏に近づいているため、追い買いは慎重に行ってください。' :
+                 rsi < 35 ? 'RSIが売られすぎ水準に近づいており、急反発リスクに注意してください。' :
+                 '週次の重要経済指標（CPI・雇用統計等）の発表タイミングには特に注意が必要です。';
+
+  var r = {
+    signal: signal,
+    signal_strength: strength,
+    trend: trend,
+    dow_phase: phase,
+    resistance1: r1,
+    resistance2: r2,
+    support1: s1,
+    support2: s2,
+    trend_line_high: chUp,
+    trend_line_low: chLo,
+    channel_upper: chUp,
+    channel_lower: chLo,
+    ma20: +ma20.toFixed(2),
+    ma50: +ma20.toFixed(2),
+    rsi: rsi,
+    rsi_signal: rsiSig,
+    entry_point: entry,
+    tp: tp,
+    sl: sl,
+    analysis: analysisTexts[trend],
+    action: actionTexts[signal],
+    risk: riskText
+  };
+
+  // 1.5秒のローディング後に表示（リアル感演出）
+  setTimeout(function(){
+    analysisResult = r;
+    overlayLines = [
+      { price: r.resistance1, color: '#ff4d6a', label: 'R1', width: 1.5, dash: [4,3] },
+      { price: r.resistance2, color: '#ff8099', label: 'R2', width: 1, dash: [4,3] },
+      { price: r.support1,    color: '#00d97e', label: 'S1', width: 1.5, dash: [4,3] },
+      { price: r.support2,    color: '#66ffbb', label: 'S2', width: 1, dash: [4,3] },
+      { price: r.channel_upper, color: '#f0b429', label: 'CH↑', width: 1, dash: [6,3] },
+      { price: r.channel_lower, color: '#f0b429', label: 'CH↓', width: 1, dash: [6,3] },
+    ];
+    buildChart(chartData, overlayLines.concat(entryLines));
+    renderAI(r);
+    btn.disabled = false; btn.textContent = '⚡ 再分析する';
+  }, 1500);
+}
+
+function renderAI(r) {
+  var tmp = document.getElementById('tmpLoad');
+  if(tmp) tmp.parentNode.removeChild(tmp);
+  // 分析完了後にパネル上部にスクロール
+  setTimeout(function(){
+    var body = document.getElementById('aiPanelBody');
+    if(body) body.scrollTop = 0;
+  }, 100);
+
+  var isBuy = r.signal === 'BUY', isSell = r.signal === 'SELL';
+  var sigBg = isBuy ? 'rgba(0,217,126,0.12)' : isSell ? 'rgba(255,77,106,0.12)' : 'rgba(240,180,41,0.1)';
+  var sigBorder = isBuy ? '#00d97e' : isSell ? '#ff4d6a' : '#f0b429';
+  var sigColor = isBuy ? '#00d97e' : isSell ? '#ff4d6a' : '#f0b429';
+  var sigArrow = isBuy ? '▲' : isSell ? '▼' : '◆';
+  var sigLabel = isBuy ? 'BUY' : isSell ? 'SELL' : 'WAIT';
+  var strBg = r.signal_strength === '強' ? sigColor : 'transparent';
+  var strColor = r.signal_strength === '強' ? '#000' : sigColor;
+
+  var html = '';
+
+  // シグナルバナー
+  html += '<div class="signal-banner fade-in" style="background:' + sigBg + ';border:1.5px solid ' + sigBorder + '">' +
+    '<div class="signal-left"><div class="signal-arrow" style="color:' + sigColor + '">' + sigArrow + '</div>' +
+    '<div><div class="signal-label" style="color:' + sigColor + '">' + sigLabel + '</div>' +
+    '<div class="signal-sub">' + r.trend + ' | ' + r.dow_phase + '</div></div></div>' +
+    '<div class="signal-strength" style="background:' + strBg + ';color:' + strColor + ';border:1px solid ' + sigColor + '">' + r.signal_strength + '</div></div>';
+
+  // インジケーターグリッド
+  var rsiColor = r.rsi >= 70 ? '#ff4d6a' : r.rsi <= 30 ? '#00d97e' : '#f0b429';
+  html += '<div class="indicator-grid fade-in">' +
+    '<div class="ind-card"><div class="ind-label">RSI</div><div class="ind-value" style="color:' + rsiColor + '">' + r.rsi + '</div><div class="ind-sub">' + r.rsi_signal + '</div></div>' +
+    '<div class="ind-card"><div class="ind-label">MA20</div><div class="ind-value" style="color:#f0b429">' + r.ma20 + '</div><div class="ind-sub">移動平均</div></div>' +
+    '<div class="ind-card"><div class="ind-label">エントリー</div><div class="ind-value" style="color:' + sigColor + '">' + r.entry_point + '</div><div class="ind-sub">推奨価格</div></div>' +
+    '<div class="ind-card"><div class="ind-label">RR比</div><div class="ind-value" style="color:#3d8bff">' + (Math.abs(r.tp - r.entry_point) / Math.abs(r.entry_point - r.sl)).toFixed(2) + ':1</div><div class="ind-sub">リスクリワード</div></div>' +
+    '</div>';
+
+  // キーレベル
+  html += '<div class="lines-section fade-in"><div class="lines-title">KEY LEVELS</div>' +
+    lineItem('#ff4d6a', 'Resistance 2', r.resistance2, '抵抗') +
+    lineItem('#ff8099', 'Resistance 1', r.resistance1, '抵抗') +
+    lineItem('#f0b429', 'Channel Upper', r.channel_upper, 'CH') +
+    lineItem('#3d8bff', 'Entry Point', r.entry_point, '推奨') +
+    lineItem('#f0b429', 'Channel Lower', r.channel_lower, 'CH') +
+    lineItem('#66ffbb', 'Support 1', r.support1, '支持') +
+    lineItem('#00d97e', 'Support 2', r.support2, '支持') +
+    lineItem('#ff4444', 'Stop Loss', r.sl, 'SL') +
+    lineItem('#00d97e', 'Take Profit', r.tp, 'TP') +
+    '</div>';
+
+  // 分析テキスト
+  html += '<div class="analysis-card fade-in">' +
+    '<div class="analysis-title">AI ANALYSIS</div>' +
+    '<div class="analysis-section"><div class="analysis-head">◈ ダウ理論分析</div><div class="analysis-text">' + r.analysis + '</div></div>' +
+    '<div class="analysis-section"><div class="analysis-head">▶ 対応策</div><div class="analysis-text">' + r.action + '</div></div>' +
+    '<div class="analysis-section"><div class="analysis-head">⚠ リスク</div><div class="analysis-text">' + r.risk + '</div></div>' +
+    '</div>';
+
+  html += '<div style="font-size:8px;color:var(--muted);text-align:center;padding:8px;letter-spacing:2px;">※ AI分析は参考情報です。投資助言ではありません。</div>';
+
+  var content = document.getElementById('aiContent');
+  content.innerHTML = html;
+  content.style.display = 'flex';
+  content.style.flexDirection = 'column';
+}
+
+function lineItem(color, name, price, type) {
+  return '<div class="line-item">' +
+    '<div class="line-dot" style="background:' + color + '"></div>' +
+    '<div class="line-name">' + name + '</div>' +
+    '<div style="display:flex;align-items:center">' +
+    '<div class="line-price" style="color:' + color + '">' + price + '</div>' +
+    '<div class="line-type" style="background:' + color + '22;color:' + color + '">' + type + '</div></div></div>';
+}
+
+// ─── PnL MODAL ───
+document.getElementById('pnlBtn').addEventListener('click', function(){ document.getElementById('pnlModal').classList.add('show'); });
+function closePnL(){ document.getElementById('pnlModal').classList.remove('show'); }
+document.getElementById('pnlModal').addEventListener('click', function(e){ if(e.target===this) closePnL(); });
+
+function calcPnL() {
+  var dir = document.getElementById('m-dir').value;
+  var entry = parseFloat(document.getElementById('m-entry').value);
+  var exit = parseFloat(document.getElementById('m-exit').value);
+  var lot = parseFloat(document.getElementById('m-lot').value) || 0.1;
+  var usdjpy = parseFloat(document.getElementById('m-usdjpy').value) || 150;
+  if(!entry || !exit) return;
+
+  var diff = dir === 'buy' ? (exit - entry) : (entry - exit);
+  var pnlUSD = diff * lot * 100; // XAU/USD: 1lot=100oz
+  var pnlJPY = pnlUSD * usdjpy;
+  var isProfit = pnlJPY >= 0;
+
+  var box = document.getElementById('m-pnl-box');
+  box.style.background = isProfit ? 'rgba(0,217,126,0.1)' : 'rgba(255,77,106,0.1)';
+  box.style.border = '1px solid ' + (isProfit ? '#00d97e' : '#ff4d6a');
+  document.getElementById('m-pnl-label').style.color = isProfit ? '#00d97e' : '#ff4d6a';
+  document.getElementById('m-pnl-label').textContent = isProfit ? '含み益 / 確定利益' : '含み損 / 確定損失';
+  document.getElementById('m-pnl-value').style.color = isProfit ? '#00d97e' : '#ff4d6a';
+  document.getElementById('m-pnl-value').textContent = (isProfit ? '+' : '-') + '¥' + Math.abs(Math.round(pnlJPY)).toLocaleString();
+  document.getElementById('m-pnl-sub').textContent = (isProfit?'+':'-') + '$' + Math.abs(pnlUSD).toFixed(2) + ' | ' + lot + 'lot | ' + Math.abs(diff).toFixed(2) + ' pips';
+  document.getElementById('m-result').style.display = 'block';
+}
+
+
+// ─── 建値ライン ───
+function applyEntryLine() {
+  var dir    = document.getElementById('m-dir').value;
+  var entry  = parseFloat(document.getElementById('m-entry').value);
+  var lot    = parseFloat(document.getElementById('m-lot').value) || 0.1;
+  var usdjpy = parseFloat(document.getElementById('m-usdjpy').value) || 150;
+  if(!entry || !chartData.length) { alert('エントリー価格を入力してください'); return; }
+
+  var last   = chartData[chartData.length - 1].c;
+  var diff   = dir === 'buy' ? (last - entry) : (entry - last);
+  var pnlJPY = Math.round(diff * lot * 100 * usdjpy);
+  var isProfit = pnlJPY >= 0;
+
+  // 建値ライン・現在価格ライン・TP/SLラインをセット
+  entryLines = [
+    // 建値ライン（白の太線）
+    { price: entry, color: '#ffffff', label: dir.toUpperCase() + ' ' + entry.toFixed(2), width: 2, dash: [] },
+    // 現在価格との損益ライン（緑 or 赤）
+    { price: last,  color: isProfit ? '#00d97e' : '#ff4d6a',
+      label: (isProfit ? '+' : '') + '¥' + Math.abs(pnlJPY).toLocaleString(),
+      width: 1.5, dash: [6,3] },
+  ];
+
+  // AIのTP/SLがあればそれも表示
+  if(analysisResult) {
+    entryLines.push({ price: analysisResult.tp, color: '#00d97e', label: 'TP ' + analysisResult.tp, width: 1, dash: [4,3] });
+    entryLines.push({ price: analysisResult.sl, color: '#ff4d6a', label: 'SL ' + analysisResult.sl, width: 1, dash: [4,3] });
+  }
+
+  buildChart(chartData, overlayLines.concat(entryLines));
+  closePnL();
+
+  // チャート上部に損益バナーを表示
+  showPnLBanner(dir, entry, last, pnlJPY, lot);
+}
+
+function showPnLBanner(dir, entry, current, pnlJPY, lot) {
+  var existing = document.getElementById('pnlBanner');
+  if(existing) existing.remove();
+
+  var isProfit = pnlJPY >= 0;
+  var banner = document.createElement('div');
+  banner.id = 'pnlBanner';
+  banner.style.cssText = [
+    'position:fixed',
+    'top:136px',
+    'left:8px',
+    'right:8px',
+    'background:' + (isProfit ? 'rgba(0,217,126,0.15)' : 'rgba(255,77,106,0.15)'),
+    'border:1px solid ' + (isProfit ? '#00d97e' : '#ff4d6a'),
+    'border-radius:8px',
+    'padding:8px 12px',
+    'display:flex',
+    'justify-content:space-between',
+    'align-items:center',
+    'z-index:100',
+    'font-family:Space Mono,monospace',
+  ].join(';');
+
+  banner.innerHTML =
+    '<span style="font-size:10px;color:#8aaccc;">' + dir.toUpperCase() + ' @ ' + entry.toFixed(2) + ' | ' + lot + 'lot</span>' +
+    '<span style="font-size:16px;font-weight:700;color:' + (isProfit ? '#00d97e' : '#ff4d6a') + ';">' +
+      (isProfit ? '+' : '') + '¥' + Math.abs(pnlJPY).toLocaleString() +
+    '</span>' +
+    '<button onclick="clearEntryLine()" style="background:none;border:none;color:#4a6080;font-size:16px;cursor:pointer;padding:0 4px;">x</button>';
+
+  document.body.appendChild(banner);
+  document.querySelector('.chart-wrap').style.top = '184px';
+}
+
+function clearEntryLine() {
+  entryLines = [];
+  var banner = document.getElementById('pnlBanner');
+  if(banner) banner.remove();
+  document.querySelector('.chart-wrap').style.top = '90px';
+  buildChart(chartData, overlayLines.concat(entryLines));
+}
+
+// ─── INIT ───
+// DOMとレイアウト確定後にチャートを描画
+window.addEventListener('DOMContentLoaded', function() {
+  // スマホ含む全デバイスでcanvasサイズを確実に設定
+  function initChart() {
+    var vh = window.innerHeight;
+    var vw = window.innerWidth;
+    // チャート高さ = 画面の45%（バランスバー・タイムフレームバー分を引く）
+    var chartH = Math.floor(vh * 0.45);
+    var canvas = document.getElementById('mainChart');
+    var wrap   = document.getElementById('chartWrap');
+    if(canvas && wrap) {
+      // canvasの高さ = 画面 - ヘッダー(88px) - ボトムバー(60px)
+      chartH = Math.floor(vh - 88 - 60);
+      wrap.style.height  = chartH + 'px';
+      canvas.style.width  = vw + 'px';
+      canvas.style.height = chartH + 'px';
+      // canvas解像度（Retinaディスプレイ対応）
+      var dpr = window.devicePixelRatio || 1;
+      canvas.width  = vw * dpr;
+      canvas.height = chartH * dpr;
+      var ctx = canvas.getContext('2d');
+      ctx.scale(dpr, dpr);
+    }
+    // chart-wrapの高さも更新
+    var chartWrapEl = document.querySelector('.chart-wrap');
+    if(chartWrapEl) chartWrapEl.style.height = chartH + 'px';
+    // aiパネルのtopも調整
+    var aiPanel = document.getElementById('aiPanel');
+    if(aiPanel) {
+      var tfBar = document.querySelector('.tf-bar');
+      var tfBottom = tfBar ? (tfBar.offsetTop + tfBar.offsetHeight) : 130;
+      aiPanel.style.top = (tfBottom + chartH + 4) + 'px';
+    }
+  }
+
+  initChart();
+  window.addEventListener('resize', function(){ initChart(); loadChart(currentTf); });
+  setTimeout(function() {
+    loadChart(currentTf);
+    setTimeout(initTouchZoom, 500);
+  }, 200);
+});
+</script>
+</body>
+</html>

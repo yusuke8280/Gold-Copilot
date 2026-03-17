@@ -79,11 +79,10 @@ html,body{
 
 /* ── CHART ── */
 .chart-area{
-  position:fixed;left:0;right:0;bottom:60px;
+  position:fixed;left:0;right:0;bottom:84px;
   top:88px;
   transition:top 0.2s;
   background:var(--bg);
-  overflow:hidden;
 }
 .chart-area.with-balance{top:122px;}
 canvas{display:block;width:100% !important;}
@@ -462,7 +461,7 @@ function initChartSize() {
   var vh = window.innerHeight;
   var hasBalance = document.getElementById('balanceBar').classList.contains('show');
   var topOffset = hasBalance ? 122 : 88;
-  var chartH = vh - topOffset - 60 - 4; // 余白
+  var chartH = vh - topOffset - 84; // ボトムバー60px + X軸ラベル24px
   chartH = Math.max(chartH, 250);
   var ca = document.getElementById('chartArea');
   var canvas = document.getElementById('mainChart');
@@ -630,8 +629,8 @@ function buildChart(candles, lines) {
         }}}
       },
       scales:{
-        x:{ticks:{color:'#6a90b0',font:{size:9,family:'Space Mono'},maxTicksLimit:6,
-             padding:4},
+        x:{ticks:{color:'#8ab0d0',font:{size:10,family:'Space Mono'},maxTicksLimit:5,
+             padding:6,maxRotation:0},
            grid:{color:'rgba(30,45,68,0.5)'}},
         y:{position:'right',
            min:Math.min.apply(null,lows)*0.9995,

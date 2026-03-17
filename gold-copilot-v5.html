@@ -83,6 +83,7 @@ html,body{
   top:88px;
   transition:top 0.2s;
   background:var(--bg);
+  overflow:hidden;
 }
 .chart-area.with-balance{top:122px;}
 canvas{display:block;width:100% !important;}
@@ -461,7 +462,7 @@ function initChartSize() {
   var vh = window.innerHeight;
   var hasBalance = document.getElementById('balanceBar').classList.contains('show');
   var topOffset = hasBalance ? 122 : 88;
-  var chartH = vh - topOffset - 60;
+  var chartH = vh - topOffset - 60 - 4; // 余白
   chartH = Math.max(chartH, 250);
   var ca = document.getElementById('chartArea');
   var canvas = document.getElementById('mainChart');
@@ -629,7 +630,8 @@ function buildChart(candles, lines) {
         }}}
       },
       scales:{
-        x:{ticks:{color:'#4a6080',font:{size:8,family:'Space Mono'},maxTicksLimit:6},
+        x:{ticks:{color:'#6a90b0',font:{size:9,family:'Space Mono'},maxTicksLimit:6,
+             padding:4},
            grid:{color:'rgba(30,45,68,0.5)'}},
         y:{position:'right',
            min:Math.min.apply(null,lows)*0.9995,
@@ -718,7 +720,6 @@ async function connectAll(){
     if(priceTimer) clearInterval(priceTimer);
     mt5Timer = setInterval(fetchMT5Data, interval*1000);
     priceTimer = setInterval(fetchLivePrice, 5000);
-    await loadChart(currentTf);
     setTimeout(closeSettings,1200);
   } else {
     showSettingsStatus('接続失敗。TokenとAccount IDを確認してください','err');
@@ -811,7 +812,10 @@ function renderPositions(){
   pnlEl.textContent=(total>=0?'+':'')+'¥'+Math.abs(total).toLocaleString();
   pnlEl.style.color=total>=0?'var(--green)':'var(--red)';
   document.getElementById('posCount').textContent=mt5Positions.length+'件';
-  if(chartData.length) buildChart(chartData, overlayLines.concat(entryLines));
+  // ポジションがある時だけチャートを更新（ない時は再描画しない）
+  if(chartData.length && mt5Positions.length > 0) {
+    buildChart(chartData, overlayLines.concat(entryLines));
+  }
 }
 
 function refreshPositionPnL(price){

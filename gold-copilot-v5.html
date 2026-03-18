@@ -233,6 +233,47 @@ canvas{display:block;width:100% !important;}
   background:var(--surface2);border:1px solid var(--border);
   border-radius:12px;padding:14px;margin-bottom:12px;
 }
+/* ── ポジション詳細モーダル ── */
+.pos-modal-overlay{
+  display:none;position:fixed;inset:0;
+  background:rgba(0,0,0,0.75);z-index:500;
+  align-items:flex-end;justify-content:center;
+}
+.pos-modal-overlay.show{display:flex;}
+.pos-modal{
+  width:100%;max-height:85vh;
+  background:var(--surface);
+  border-radius:20px 20px 0 0;
+  overflow-y:auto;-webkit-overflow-scrolling:touch;
+  padding:20px 16px 40px;
+}
+.pos-item{
+  background:var(--surface2);border:1px solid var(--border);
+  border-radius:12px;padding:14px;margin-bottom:12px;
+}
+.pos-item-header{
+  display:flex;justify-content:space-between;align-items:center;
+  margin-bottom:12px;
+}
+.pos-item-symbol{font-size:16px;font-weight:700;}
+.pos-item-pnl{font-size:20px;font-weight:700;}
+.pos-item-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;}
+.pos-item-cell{background:var(--bg);border-radius:8px;padding:10px;}
+.pos-item-label{font-size:10px;color:var(--muted);letter-spacing:1px;margin-bottom:4px;}
+.pos-item-value{font-size:14px;font-weight:700;}
+.tp-cell{border:1px solid var(--green);}
+.sl-cell{border:1px solid var(--red);}
+.pos-chart-btn{
+  width:100%;padding:12px;
+  background:linear-gradient(135deg,#003399,#1a6aff);
+  border:none;border-radius:10px;
+  font-family:'Space Mono',monospace;font-size:12px;font-weight:700;
+  color:#fff;cursor:pointer;margin-bottom:8px;
+}
+.advice-box{
+  border-radius:10px;padding:12px;margin-bottom:12px;
+  font-size:13px;line-height:1.7;
+}
 .entry-row{
   display:flex;justify-content:space-between;
   padding:7px 0;border-bottom:1px solid var(--border);
@@ -299,7 +340,7 @@ canvas{display:block;width:100% !important;}
   <div class="bal-item"><div class="bal-label">残高</div><div class="bal-value" id="balVal">---</div></div>
   <div class="bal-item"><div class="bal-label">証拠金</div><div class="bal-value" id="equityVal">---</div></div>
   <div class="bal-item"><div class="bal-label">含み損益</div><div class="bal-value" id="pnlVal">¥0</div></div>
-  <div class="bal-item"><div class="bal-label">ポジション</div><div class="bal-value" id="posCount">0件</div></div>
+  <div class="bal-item" onclick="openPosModal()" style="cursor:pointer;"><div class="bal-label">ポジション ▶</div><div class="bal-value" id="posCount" style="color:var(--gold);">0件</div></div>
 </div>
 
 <!-- TF BAR -->
@@ -393,6 +434,16 @@ canvas{display:block;width:100% !important;}
   </div>
 </div>
 
+<!-- ポジション詳細モーダル -->
+<div class="pos-modal-overlay" id="posModal">
+  <div class="pos-modal">
+    <div class="modal-handle"></div>
+    <div class="modal-title">POSITIONS</div>
+    <div id="posModalContent"></div>
+    <button class="modal-close" onclick="closePosModal()">CLOSE</button>
+  </div>
+</div>
+
 <!-- AI 全画面モーダル -->
 <div class="ai-overlay" id="aiOverlay">
   <div class="ai-header">
@@ -468,7 +519,7 @@ window.addEventListener('DOMContentLoaded', function(){
     analyzeChart();
   });
   // 設定モーダルの外側タップで閉じる
-  ['settingsModal','pnlModal'].forEach(function(id){
+  ['settingsModal','pnlModal','posModal'].forEach(function(id){
     document.getElementById(id).addEventListener('click', function(e){
       if(e.target === this) this.classList.remove('show');
     });
@@ -915,38 +966,14 @@ function renderPositions(){
     var pnlJPY=Math.round((p.profit||0)*USD_JPY);
     total+=pnlJPY;
     if(p.openPrice){
-      // 建値ライン（白）
+      // 建値ラインのみ表示（シンプル）
       entryLines.push({
         price:p.openPrice,
-        color:'#ffffff',
-        label:(isBuy?'▲ BUY':'▼ SELL')+' '+( p.openPrice.toFixed?p.openPrice.toFixed(2):p.openPrice)
+        color: pnlJPY>=0 ? '#00d97e' : '#ff4d6a',
+        label:(isBuy?'▲ BUY':'▼ SELL')+' '+(p.openPrice.toFixed?p.openPrice.toFixed(2):p.openPrice)
           +'  '+(pnlJPY>=0?'+':'')+'¥'+Math.abs(pnlJPY).toLocaleString(),
         width:2, dash:[]
       });
-
-      // AI分析のTP・SLがあれば追加
-      if(analysisResult){
-        var tp = analysisResult.tp;
-        var sl = analysisResult.sl;
-        if(tp){
-          entryLines.push({
-            price:tp,
-            color:'#00d97e',
-            label:'✓ 利確目標 '+tp.toFixed(2)
-              +'  +'+(Math.abs((tp - p.openPrice)*( p.volume||0.01)*100*USD_JPY)).toFixed(0)+'円',
-            width:1.5, dash:[6,3]
-          });
-        }
-        if(sl){
-          entryLines.push({
-            price:sl,
-            color:'#ff4d6a',
-            label:'✗ 損切りライン '+sl.toFixed(2)
-              +'  -'+(Math.abs((sl - p.openPrice)*(p.volume||0.01)*100*USD_JPY)).toFixed(0)+'円',
-            width:1.5, dash:[6,3]
-          });
-        }
-      }
     }
   });
   var pnlEl=document.getElementById('pnlVal');
@@ -1010,6 +1037,107 @@ function openAI(){
   document.getElementById('aiContent').style.display='none';
 }
 function closeAI(){ document.getElementById('aiOverlay').classList.remove('show'); }
+
+// ── ポジション詳細モーダル ──
+function openPosModal(){
+  if(!mt5Positions.length){ return; }
+  var html = '';
+  mt5Positions.forEach(function(p, idx){
+    var isBuy = (p.type||'').toLowerCase().includes('buy');
+    var pnlJPY = Math.round((p.profit||0)*USD_JPY);
+    var isProfit = pnlJPY >= 0;
+    var sigColor = isProfit ? 'var(--green)' : 'var(--red)';
+
+    // AI分析のTP・SL（BUYなら tp>entry、sl<entry）
+    var tp = null, sl = null, tpPnl = 0, slPnl = 0;
+    if(analysisResult){
+      // BUYの場合: tp = entryより上、sl = entryより下
+      var rawTp = analysisResult.tp;
+      var rawSl = analysisResult.sl;
+      if(isBuy){
+        tp = rawTp > p.openPrice ? rawTp : rawSl > p.openPrice ? rawSl : null;
+        sl = rawSl < p.openPrice ? rawSl : rawTp < p.openPrice ? rawTp : null;
+      } else {
+        tp = rawTp < p.openPrice ? rawTp : rawSl < p.openPrice ? rawSl : null;
+        sl = rawSl > p.openPrice ? rawSl : rawTp > p.openPrice ? rawTp : null;
+      }
+      if(tp) tpPnl = Math.round(Math.abs(tp - p.openPrice) * (p.volume||0.01) * 100 * USD_JPY);
+      if(sl) slPnl = Math.round(Math.abs(sl - p.openPrice) * (p.volume||0.01) * 100 * USD_JPY);
+    }
+
+    // アドバイス
+    var advice = '';
+    if(isProfit && tp && pnlJPY > tpPnl * 0.7){
+      advice = '✓ 利確目標に近づいています。利益確定を検討しましょう。';
+    } else if(!isProfit && sl && Math.abs(pnlJPY) > slPnl * 0.7){
+      advice = '⚠ 損切りラインに近づいています。リスク管理を確認してください。';
+    } else if(isProfit){
+      advice = 'ポジションは利益中です。焦らず利確目標まで待ちましょう。';
+    } else {
+      advice = '含み損の状態です。損切りラインを守ってリスク管理を徹底しましょう。';
+    }
+
+    html += '<div class="pos-item">';
+    html += '<div class="pos-item-header">';
+    html += '<span class="pos-item-symbol">'+(p.symbol||'XAUUSDs')+' <span class="badge '+(isBuy?'badge-buy':'badge-sell')+'">'+(isBuy?'BUY':'SELL')+'</span></span>';
+    html += '<span class="pos-item-pnl" style="color:'+sigColor+'">'+(pnlJPY>=0?'+':'')+'¥'+Math.abs(pnlJPY).toLocaleString()+'</span>';
+    html += '</div>';
+    html += '<div class="pos-item-grid">';
+    html += '<div class="pos-item-cell"><div class="pos-item-label">建値</div><div class="pos-item-value">'+p.openPrice.toFixed(2)+'</div></div>';
+    html += '<div class="pos-item-cell"><div class="pos-item-label">現在値</div><div class="pos-item-value">'+(lastPrice||'---')+'</div></div>';
+    html += '<div class="pos-item-cell"><div class="pos-item-label">ロット</div><div class="pos-item-value">'+(p.volume||0.01)+'lot</div></div>';
+    html += '<div class="pos-item-cell"><div class="pos-item-label">スワップ</div><div class="pos-item-value">'+(p.swap||0).toFixed(0)+'</div></div>';
+    html += '</div>';
+
+    if(tp || sl){
+      html += '<div class="pos-item-grid">';
+      if(tp) html += '<div class="pos-item-cell tp-cell"><div class="pos-item-label">✓ 利確目標</div><div class="pos-item-value" style="color:var(--green)">'+tp.toFixed(2)+'</div><div style="font-size:11px;color:var(--green);margin-top:2px;">+¥'+tpPnl.toLocaleString()+'</div></div>';
+      if(sl) html += '<div class="pos-item-cell sl-cell"><div class="pos-item-label">✗ 損切りライン</div><div class="pos-item-value" style="color:var(--red)">'+sl.toFixed(2)+'</div><div style="font-size:11px;color:var(--red);margin-top:2px;">-¥'+slPnl.toLocaleString()+'</div></div>';
+      html += '</div>';
+      html += '<button class="pos-chart-btn" onclick="showTPSLOnChart('+idx+')">チャートにTP・SLラインを表示</button>';
+    } else {
+      html += '<div style="font-size:12px;color:var(--muted);text-align:center;padding:8px;">AI分析を実行するとTP・SLが表示されます</div>';
+    }
+
+    var adviceBg = isProfit ? 'rgba(0,217,126,0.08)' : 'rgba(255,77,106,0.08)';
+    html += '<div class="advice-box" style="background:'+adviceBg+';border:1px solid '+sigColor+';color:'+sigColor+'">'+advice+'</div>';
+    html += '</div>';
+  });
+
+  document.getElementById('posModalContent').innerHTML = html;
+  document.getElementById('posModal').classList.add('show');
+}
+
+function closePosModal(){ document.getElementById('posModal').classList.remove('show'); }
+
+function showTPSLOnChart(idx){
+  var p = mt5Positions[idx];
+  if(!p || !analysisResult) return;
+  var isBuy = (p.type||'').toLowerCase().includes('buy');
+  var rawTp = analysisResult.tp, rawSl = analysisResult.sl;
+  var tp, sl;
+  if(isBuy){
+    tp = rawTp > p.openPrice ? rawTp : rawSl > p.openPrice ? rawSl : null;
+    sl = rawSl < p.openPrice ? rawSl : rawTp < p.openPrice ? rawTp : null;
+  } else {
+    tp = rawTp < p.openPrice ? rawTp : rawSl < p.openPrice ? rawSl : null;
+    sl = rawSl > p.openPrice ? rawSl : rawTp > p.openPrice ? rawTp : null;
+  }
+  var pnlJPY = Math.round((p.profit||0)*USD_JPY);
+
+  // 建値+TP+SLをentryLinesにセット
+  entryLines = [{
+    price: p.openPrice,
+    color: '#ffffff',
+    label: (isBuy?'▲ BUY':'▼ SELL')+' '+p.openPrice.toFixed(2)+'  '+(pnlJPY>=0?'+':'')+'¥'+Math.abs(pnlJPY).toLocaleString(),
+    width:2, dash:[]
+  }];
+  if(tp) entryLines.push({price:tp, color:'#00d97e', label:'✓ 利確 '+tp.toFixed(2), width:1.5, dash:[6,3]});
+  if(sl) entryLines.push({price:sl, color:'#ff4d6a', label:'✗ 損切 '+sl.toFixed(2), width:1.5, dash:[6,3]});
+
+  buildChart(chartData, overlayLines.concat(entryLines));
+  closePosModal();
+}
 
 async function analyzeChart(){
   if(!chartData.length) return;
@@ -1121,10 +1249,6 @@ function renderAI(r){
   // 先頭にスクロール
   document.getElementById('aiBody').scrollTop=0;
 
-  // ポジションがあればTP/SLラインをチャートに反映
-  if(mt5Positions.length > 0) {
-    renderPositions();
-  }
 }
 function lineItem(name,price,bg,color){
   return '<div class="line-item"><span class="line-name">'+name+'</span>'

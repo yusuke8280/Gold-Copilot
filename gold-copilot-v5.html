@@ -351,7 +351,7 @@ canvas{display:block;width:100% !important;}
       <input type="text" id="mt5AccountId" placeholder="MetaApiのAccount ID">
     </div>
     <div class="modal-grid">
-      <div class="m-field"><label>USD/JPY</label><input type="number" id="usdJpy" value="150" step="0.01"></div>
+      <div class="m-field"><label>USD/JPY（自動取得）</label><input type="number" id="usdJpy" value="150" step="0.01" placeholder="自動取得"></div>
       <div class="m-field"><label>更新(秒)</label><input type="number" id="updateInterval" value="10" min="5"></div>
     </div>
     <div class="status-msg" id="settingsStatus"></div>
@@ -705,12 +705,31 @@ function showSettingsStatus(msg, type){
   el.textContent = msg;
 }
 
+// ─── USD/JPY自動取得 ───
+async function fetchUSDJPY() {
+  if(!TWELVE_KEY) return;
+  try {
+    var res = await fetch('https://api.twelvedata.com/price?symbol=USD/JPY&apikey=' + TWELVE_KEY);
+    var data = await res.json();
+    if(data.price) {
+      USD_JPY = parseFloat(data.price);
+      document.getElementById('usdJpy').value = USD_JPY.toFixed(2);
+      console.log('USD/JPY自動取得:', USD_JPY.toFixed(2));
+    }
+  } catch(e) { console.log('USD/JPY取得失敗、手動値を使用'); }
+}
+
 async function connectAll(){
   TWELVE_KEY = document.getElementById('twelveKey').value.trim();
   MT5_TOKEN = document.getElementById('mt5Token').value.trim();
   MT5_ACCOUNT_ID = document.getElementById('mt5AccountId').value.trim();
   USD_JPY = parseFloat(document.getElementById('usdJpy').value)||150;
   var interval = parseInt(document.getElementById('updateInterval').value)||10;
+  // TwelveKeyがあればUSD/JPYを自動取得
+  if(TWELVE_KEY) {
+    showSettingsStatus('USD/JPYレートを取得中...', 'info');
+    await fetchUSDJPY();
+  }
 
   if(TWELVE_KEY && !MT5_TOKEN){
     showSettingsStatus('TwelveDataに接続中...','info');
@@ -734,6 +753,8 @@ async function connectAll(){
     if(priceTimer) clearInterval(priceTimer);
     mt5Timer = setInterval(fetchMT5Data, interval*1000);
     priceTimer = setInterval(fetchLivePrice, 5000);
+    // USD/JPYを30分ごとに自動更新
+    setInterval(fetchUSDJPY, 30*60*1000);
     setTimeout(closeSettings,1200);
   } else {
     showSettingsStatus('接続失敗。TokenとAccount IDを確認してください','err');

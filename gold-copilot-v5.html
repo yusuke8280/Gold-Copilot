@@ -575,6 +575,12 @@ function buildChart(candles, lines) {
   var highs = candles.map(function(c){return c.h;});
   var closes = candles.map(function(c){return c.c;});
 
+  // Y軸範囲をローソク足+ラインを含めて計算
+  var allPrices = lows.concat(highs);
+  lines.forEach(function(l){ if(l.price > 0) allPrices.push(l.price); });
+  var yAxisMin = Math.min.apply(null, allPrices) * 0.9994;
+  var yAxisMax = Math.max.apply(null, allPrices) * 1.0006;
+
   // JST表示（MT5と同じ形式：日付+時刻）
   var labels = candles.map(function(c, i){
     var d = new Date(c.t);
@@ -656,17 +662,8 @@ function buildChart(candles, lines) {
              padding:6,maxRotation:0},
            grid:{color:'rgba(30,45,68,0.5)'}},
         y:{position:'right',
-           min:(function(){
-             var yMin = Math.min.apply(null,lows)*0.9995;
-             // entryLinesの価格もY軸範囲に含める
-             lines.forEach(function(l){ if(l.price < yMin) yMin = l.price * 0.9995; });
-             return yMin;
-           })(),
-           max:(function(){
-             var yMax = Math.max.apply(null,highs)*1.0005;
-             lines.forEach(function(l){ if(l.price > yMax) yMax = l.price * 1.0005; });
-             return yMax;
-           })(),
+           min:yAxisMin,
+           max:yAxisMax,
            ticks:{color:'#4a6080',font:{size:9,family:'Space Mono'},maxTicksLimit:8,
                   callback:function(v){return v.toFixed(2);}},
            grid:{color:'rgba(30,45,68,0.5)'}}
@@ -912,13 +909,16 @@ function renderPositions(){
         needReload = true;
       }
     }
-    // チャートデータがない時だけ再読み込み、あればY軸を調整して再描画
+    // チャートデータがない時だけ再読み込み
+    // ある時はentryLinesだけ更新（buildChartは呼ばない→チラつき防止）
     if(!chartData.length) {
       chartLoadedWithMT5 = true;
       loadChart(currentTf);
-    } else {
-      buildChart(chartData, overlayLines.concat(entryLines));
+    } else if(!chartLoadedWithMT5) {
+      chartLoadedWithMT5 = true;
+      loadChart(currentTf); // 初回のみ再読み込み
     }
+    // 以降はrefreshPositionPnLで損益表示のみ更新
   }
 }
 

@@ -1188,8 +1188,12 @@ function fitYAxis(minIdx,maxIdx){
   var ls=[],hs=[];
   for(var i=i0;i<=i1;i++){if(chartData[i]){ls.push(chartData[i].l);hs.push(chartData[i].h);}}
   if(!ls.length)return;
-  chartInstance.options.scales.y.min=Math.min.apply(null,ls)*0.9995;
-  chartInstance.options.scales.y.max=Math.max.apply(null,hs)*1.0005;
+  // 建値ライン・S/Rラインも範囲に含める
+  overlayLines.concat(entryLines).forEach(function(l){
+    if(l.price>0){ls.push(l.price);hs.push(l.price);}
+  });
+  chartInstance.options.scales.y.min=Math.min.apply(null,ls)*0.9994;
+  chartInstance.options.scales.y.max=Math.max.apply(null,hs)*1.0006;
 }
 </script>
 </body>

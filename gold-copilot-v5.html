@@ -963,7 +963,8 @@ function renderPositions(){
   entryLines=[];
   mt5Positions.forEach(function(p){
     var isBuy=(p.type||'').toLowerCase().includes('buy');
-    var pnlJPY=Math.round((p.profit||0)*USD_JPY);
+    var profitUSD = p.unrealizedProfit || p.profit || 0;
+    var pnlJPY=Math.round(profitUSD * USD_JPY);
     total+=pnlJPY;
     if(p.openPrice){
       // 建値ラインのみ表示（シンプル）
@@ -1011,7 +1012,7 @@ function refreshPositionPnL(price){
   mt5Positions.forEach(function(p){
     var isBuy=(p.type||'').toLowerCase().includes('buy');
     var diff=isBuy?(price-p.openPrice):(p.openPrice-price);
-    var pnlJPY=Math.round(diff*(p.volume||0.1)*100*USD_JPY);
+    var pnlJPY=Math.round(diff*(p.volume||0.01)*100*USD_JPY);
     total+=pnlJPY;
     if(p.openPrice){
       entryLines.push({
@@ -1044,7 +1045,9 @@ function openPosModal(){
   var html = '';
   mt5Positions.forEach(function(p, idx){
     var isBuy = (p.type||'').toLowerCase().includes('buy');
-    var pnlJPY = Math.round((p.profit||0)*USD_JPY);
+    // profitはUSD建て、USD_JPYで円換算
+    var profitUSD = p.unrealizedProfit || p.profit || 0;
+    var pnlJPY = Math.round(profitUSD * USD_JPY);
     var isProfit = pnlJPY >= 0;
     var sigColor = isProfit ? 'var(--green)' : 'var(--red)';
 

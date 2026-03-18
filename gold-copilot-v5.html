@@ -425,6 +425,7 @@ var mt5Positions = [];
 var mt5Timer = null;
 var priceTimer = null;
 var lastPrice = 0;
+var chartLoadedWithMT5 = false; // MT5データでチャートを読み込み済みフラグ
 
 // ══ INIT ══
 window.addEventListener('DOMContentLoaded', function(){
@@ -847,9 +848,24 @@ function renderPositions(){
   pnlEl.textContent=(total>=0?'+':'')+'¥'+Math.abs(total).toLocaleString();
   pnlEl.style.color=total>=0?'var(--green)':'var(--red)';
   document.getElementById('posCount').textContent=mt5Positions.length+'件';
-  // ポジションがある時だけチャートを更新（ない時は再描画しない）
-  if(chartData.length && mt5Positions.length > 0) {
-    buildChart(chartData, overlayLines.concat(entryLines));
+  // ポジションがある時はチャートを再読み込み（Y軸範囲をMT5価格に合わせる）
+  if(mt5Positions.length > 0) {
+    // chartDataがない or Y軸範囲がMT5価格と大きくずれている場合は再読み込み
+    var needReload = !chartData.length;
+    if(!needReload && chartInstance) {
+      var yMin = chartInstance.options.scales.y.min || 0;
+      var yMax = chartInstance.options.scales.y.max || 0;
+      var entryPrice = entryLines[0] ? entryLines[0].price : 0;
+      if(entryPrice > 0 && (entryPrice < yMin || entryPrice > yMax)) {
+        needReload = true;
+      }
+    }
+    if(needReload && !chartLoadedWithMT5) {
+      chartLoadedWithMT5 = true;
+      loadChart(currentTf);
+    } else {
+      buildChart(chartData, overlayLines.concat(entryLines));
+    }
   }
 }
 

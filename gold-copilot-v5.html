@@ -606,15 +606,21 @@ function buildChart(candles, lines) {
     });
   }
 
-  // annotationsでS/Rライン
-  var annotations = {};
-  lines.forEach(function(l,i){
-    annotations['l'+i]={
-      type:'line',yMin:l.price,yMax:l.price,
-      borderColor:l.color,borderWidth:l.width||1.5,
+  // S/Rライン・建値ラインをdatasetとして追加（annotationsプラグイン不要）
+  var lineDatasets = lines.map(function(l){
+    // 全データポイントに同じ価格を設定（水平線）
+    var lineData = candles.map(function(){ return l.price; });
+    return {
+      type:'line',
+      label:l.label||'',
+      data:lineData,
+      borderColor:l.color,
+      borderWidth:l.width||1.5,
       borderDash:l.dash||[],
-      label:{display:true,content:l.label,position:'start',
-             color:l.color,font:{size:10,family:'Space Mono'},padding:2}
+      pointRadius:0,
+      tension:0,
+      fill:false,
+      spanGaps:true,
     };
   });
 
@@ -632,7 +638,7 @@ function buildChart(candles, lines) {
          borderColor:'#f0b429',borderWidth:1.5,pointRadius:0,tension:0.3,fill:false,spanGaps:true},
         {type:'line',label:'MA50',data:calcMA(closes,50),
          borderColor:'#3d8bff',borderWidth:1.5,pointRadius:0,tension:0.3,fill:false,spanGaps:true},
-      ]
+      ].concat(lineDatasets)
     },
     options:{
       responsive:false,
@@ -656,6 +662,42 @@ function buildChart(candles, lines) {
            grid:{color:'rgba(30,45,68,0.5)'}}
       }
     }
+  });
+
+  // ライン上にラベルを描画（afterRenderフック）
+  chartInstance._lineLabels = lines;
+  var originalDraw = chartInstance.draw.bind(chartInstance);
+  chartInstance.draw = function() {
+    originalDraw();
+    drawLineLabels(chartInstance, lines);
+  };
+}
+
+// ラインラベルをcanvasに直接描画
+function drawLineLabels(chart, lines) {
+  if(!lines || !lines.length) return;
+  var ctx2 = chart.ctx;
+  var yScale = chart.scales.y;
+  var xScale = chart.scales.x;
+  if(!yScale || !xScale) return;
+  lines.forEach(function(l) {
+    if(!l.label) return;
+    var yPos = yScale.getPixelForValue(l.price);
+    if(yPos < yScale.top || yPos > yScale.bottom) return;
+    ctx2.save();
+    ctx2.font = '10px Space Mono, monospace';
+    ctx2.fillStyle = l.color;
+    ctx2.textAlign = 'left';
+    ctx2.textBaseline = 'bottom';
+    var text = l.label;
+    var textWidth = ctx2.measureText(text).width;
+    // 背景
+    ctx2.fillStyle = 'rgba(8,12,18,0.8)';
+    ctx2.fillRect(xScale.left + 4, yPos - 14, textWidth + 8, 14);
+    // テキスト
+    ctx2.fillStyle = l.color;
+    ctx2.fillText(text, xScale.left + 8, yPos - 2);
+    ctx2.restore();
   });
 }
 

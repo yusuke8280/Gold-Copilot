@@ -523,8 +523,8 @@ async function fetchMetaApiCandles(tf, count) {
     var data = await res.json();
     if(!Array.isArray(data) || !data.length) return null;
     return data.map(function(v){
-      // brokerTimeはEET(UTC+2)なのでJST(UTC+9)に+7時間変換
-      var t = new Date(v.brokerTime || v.time).getTime() + 7*60*60*1000;
+      // brokerTimeはEEST(UTC+3)なのでJST(UTC+9)に+6時間変換
+      var t = new Date(v.brokerTime || v.time).getTime() + 6*60*60*1000;
       return {
         t: t,
         o: +v.open, h: +v.high, l: +v.low, c: +v.close

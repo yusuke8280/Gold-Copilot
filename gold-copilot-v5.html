@@ -523,9 +523,10 @@ async function fetchMetaApiCandles(tf, count) {
     var data = await res.json();
     if(!Array.isArray(data) || !data.length) return null;
     return data.map(function(v){
-      // brokerTimeはローカル時間なのでそのまま使う
+      // brokerTimeはEET(UTC+2)なのでJST(UTC+9)に+7時間変換
+      var t = new Date(v.brokerTime || v.time).getTime() + 7*60*60*1000;
       return {
-        t: new Date(v.brokerTime || v.time).getTime(),
+        t: t,
         o: +v.open, h: +v.high, l: +v.low, c: +v.close
       };
     }).sort(function(a,b){return a.t-b.t;});
@@ -572,12 +573,26 @@ function buildChart(candles, lines) {
   var highs = candles.map(function(c){return c.h;});
   var closes = candles.map(function(c){return c.c;});
 
-  // JST表示
-  var labels = candles.map(function(c){
+  // JST表示（MT5と同じ形式：日付+時刻）
+  var labels = candles.map(function(c, i){
     var d = new Date(c.t);
-    if(currentTf==='1D'||currentTf==='1W')
+    var opts = {timeZone:'Asia/Tokyo'};
+    if(currentTf==='1D'||currentTf==='1W'){
       return d.toLocaleDateString('ja-JP',{month:'2-digit',day:'2-digit',timeZone:'Asia/Tokyo'});
-    return d.toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit',timeZone:'Asia/Tokyo'});
+    }
+    // 時間足ごとに表示形式を変える
+    var timeStr = d.toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit',timeZone:'Asia/Tokyo'});
+    var dateStr = d.toLocaleDateString('ja-JP',{month:'2-digit',day:'2-digit',timeZone:'Asia/Tokyo'});
+    // 日付が変わる最初のローソク or 先頭は日付も表示
+    if(i===0){
+      return dateStr + ' ' + timeStr;
+    }
+    var prevD = new Date(candles[i-1].t);
+    var prevDate = prevD.toLocaleDateString('ja-JP',{month:'2-digit',day:'2-digit',timeZone:'Asia/Tokyo'});
+    if(dateStr !== prevDate){
+      return dateStr + ' ' + timeStr;
+    }
+    return timeStr;
   });
 
   var upC='rgba(0,217,126,0.85)', dnC='rgba(255,77,106,0.85)';

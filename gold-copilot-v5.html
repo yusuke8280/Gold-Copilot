@@ -430,6 +430,26 @@ var chartLoadedWithMT5 = false; // MT5データでチャートを読み込み済
 // ══ INIT ══
 window.addEventListener('DOMContentLoaded', function(){
   initChartSize();
+
+  // localStorageから設定を復元して自動接続
+  try {
+    var savedTwelve  = localStorage.getItem('gc_twelve_key') || '';
+    var savedToken   = localStorage.getItem('gc_mt5_token') || '';
+    var savedAccount = localStorage.getItem('gc_mt5_account') || '';
+    var savedInterval = parseInt(localStorage.getItem('gc_interval')) || 10;
+    if(savedTwelve || savedToken) {
+      document.getElementById('twelveKey').value   = savedTwelve;
+      document.getElementById('mt5Token').value    = savedToken;
+      document.getElementById('mt5AccountId').value = savedAccount;
+      document.getElementById('updateInterval').value = savedInterval;
+      TWELVE_KEY = savedTwelve;
+      MT5_TOKEN  = savedToken;
+      MT5_ACCOUNT_ID = savedAccount;
+      // 自動接続（バックグラウンドで）
+      setTimeout(function(){ connectAll(); }, 800);
+    }
+  } catch(e) {}
+
   loadChart(currentTf);
   initTouchZoom();
   // TFボタン
@@ -775,6 +795,15 @@ async function connectAll(){
   MT5_ACCOUNT_ID = document.getElementById('mt5AccountId').value.trim();
   USD_JPY = parseFloat(document.getElementById('usdJpy').value)||150;
   var interval = parseInt(document.getElementById('updateInterval').value)||10;
+
+  // localStorageに保存（リロード後も維持）
+  try {
+    localStorage.setItem('gc_twelve_key', TWELVE_KEY);
+    localStorage.setItem('gc_mt5_token', MT5_TOKEN);
+    localStorage.setItem('gc_mt5_account', MT5_ACCOUNT_ID);
+    localStorage.setItem('gc_interval', interval);
+  } catch(e) {}
+
   // TwelveKeyがあればUSD/JPYを自動取得
   if(TWELVE_KEY) {
     showSettingsStatus('USD/JPYレートを取得中...', 'info');
@@ -815,7 +844,9 @@ function disconnectAll(){
   if(mt5Timer){clearInterval(mt5Timer);mt5Timer=null;}
   if(priceTimer){clearInterval(priceTimer);priceTimer=null;}
   mt5Connected=false; mt5Positions=[];
-  MT5_TOKEN=''; MT5_ACCOUNT_ID='';
+  MT5_TOKEN=''; MT5_ACCOUNT_ID=''; TWELVE_KEY='';
+  try { localStorage.removeItem('gc_twelve_key'); localStorage.removeItem('gc_mt5_token');
+        localStorage.removeItem('gc_mt5_account'); } catch(e) {}
   updateBadge(false);
   document.getElementById('balanceBar').classList.remove('show');
   document.getElementById('tfBar').classList.remove('with-balance');

@@ -439,6 +439,7 @@ window.addEventListener('DOMContentLoaded', function(){
       btn.classList.add('active');
       currentTf = btn.dataset.tf;
       overlayLines = [];
+      chartLoadedWithMT5 = false; // TF切り替え時はY軸を再計算
       loadChart(currentTf);
     });
   });
@@ -655,8 +656,17 @@ function buildChart(candles, lines) {
              padding:6,maxRotation:0},
            grid:{color:'rgba(30,45,68,0.5)'}},
         y:{position:'right',
-           min:Math.min.apply(null,lows)*0.9995,
-           max:Math.max.apply(null,highs)*1.0005,
+           min:(function(){
+             var yMin = Math.min.apply(null,lows)*0.9995;
+             // entryLinesの価格もY軸範囲に含める
+             lines.forEach(function(l){ if(l.price < yMin) yMin = l.price * 0.9995; });
+             return yMin;
+           })(),
+           max:(function(){
+             var yMax = Math.max.apply(null,highs)*1.0005;
+             lines.forEach(function(l){ if(l.price > yMax) yMax = l.price * 1.0005; });
+             return yMax;
+           })(),
            ticks:{color:'#4a6080',font:{size:9,family:'Space Mono'},maxTicksLimit:8,
                   callback:function(v){return v.toFixed(2);}},
            grid:{color:'rgba(30,45,68,0.5)'}}
@@ -902,7 +912,8 @@ function renderPositions(){
         needReload = true;
       }
     }
-    if(needReload && !chartLoadedWithMT5) {
+    // チャートデータがない時だけ再読み込み、あればY軸を調整して再描画
+    if(!chartData.length) {
       chartLoadedWithMT5 = true;
       loadChart(currentTf);
     } else {

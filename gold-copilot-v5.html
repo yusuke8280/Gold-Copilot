@@ -975,8 +975,7 @@ function renderPositions(){
       entryLines.push({
         price:p.openPrice,
         color: pnlJPY>=0 ? '#00d97e' : '#ff4d6a',
-        label:(isBuy?'▲ BUY':'▼ SELL')+' '+(p.openPrice.toFixed?p.openPrice.toFixed(2):p.openPrice)
-          +'  '+(pnlJPY>=0?'+':'')+'¥'+Math.abs(pnlJPY).toLocaleString(),
+        label:(isBuy?'▲ BUY':'▼ SELL')+' '+(p.openPrice.toFixed?p.openPrice.toFixed(2):p.openPrice),
         width:2, dash:[]
       });
     }
@@ -1024,8 +1023,7 @@ function refreshPositionPnL(price){
       entryLines.push({
         price:p.openPrice,
         color:pnlJPY>=0?'#00d97e':'#ff4d6a',
-        label:(isBuy?'▲ BUY':'▼ SELL')+' '+p.openPrice.toFixed(2)
-          +'  '+(pnlJPY>=0?'+':'')+'¥'+Math.abs(pnlJPY).toLocaleString(),
+        label:(isBuy?'▲ BUY':'▼ SELL')+' '+p.openPrice.toFixed(2),
         width:2,dash:[]
       });
     }
@@ -1133,13 +1131,13 @@ function showTPSLOnChart(idx){
     tp = rawTp < p.openPrice ? rawTp : rawSl < p.openPrice ? rawSl : null;
     sl = rawSl > p.openPrice ? rawSl : rawTp > p.openPrice ? rawTp : null;
   }
-  var pnlJPY = Math.round((p.profit||0)*USD_JPY);
+  var pnlJPY = Math.round((p.unrealizedProfit||p.profit||0) * (p.accountCurrencyExchangeRate||1) * USD_JPY);
 
   // 建値+TP+SLをentryLinesにセット
   entryLines = [{
     price: p.openPrice,
     color: '#ffffff',
-    label: (isBuy?'▲ BUY':'▼ SELL')+' '+p.openPrice.toFixed(2)+'  '+(pnlJPY>=0?'+':'')+'¥'+Math.abs(pnlJPY).toLocaleString(),
+    label: (isBuy?'▲ BUY':'▼ SELL')+' '+p.openPrice.toFixed(2),
     width:2, dash:[]
   }];
   if(tp) entryLines.push({price:tp, color:'#00d97e', label:'✓ 利確 '+tp.toFixed(2), width:1.5, dash:[6,3]});

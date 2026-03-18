@@ -836,7 +836,7 @@ function renderPositions(){
     if(p.openPrice){
       entryLines.push({
         price:p.openPrice,
-        color:isBuy?'var(--green)':'var(--red)',
+        color:isBuy?'#00d97e':'#ff4d6a',
         label:(isBuy?'BUY':'SELL')+' '+(p.openPrice.toFixed?p.openPrice.toFixed(2):p.openPrice)
           +'  '+(pnlJPY>=0?'+':'')+'¥'+Math.abs(pnlJPY).toLocaleString(),
         width:2,dash:[]
@@ -864,7 +864,7 @@ function refreshPositionPnL(price){
     if(p.openPrice){
       entryLines.push({
         price:p.openPrice,
-        color:isBuy?'var(--green)':'var(--red)',
+        color:isBuy?'#00d97e':'#ff4d6a',
         label:(isBuy?'BUY':'SELL')+' '+p.openPrice.toFixed(2)
           +'  '+(pnlJPY>=0?'+':'')+'¥'+Math.abs(pnlJPY).toLocaleString(),
         width:2,dash:[]

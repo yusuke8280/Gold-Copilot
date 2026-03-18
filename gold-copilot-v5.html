@@ -915,13 +915,38 @@ function renderPositions(){
     var pnlJPY=Math.round((p.profit||0)*USD_JPY);
     total+=pnlJPY;
     if(p.openPrice){
+      // 建値ライン（白）
       entryLines.push({
         price:p.openPrice,
-        color:isBuy?'#00d97e':'#ff4d6a',
-        label:(isBuy?'BUY':'SELL')+' '+(p.openPrice.toFixed?p.openPrice.toFixed(2):p.openPrice)
+        color:'#ffffff',
+        label:(isBuy?'▲ BUY':'▼ SELL')+' '+( p.openPrice.toFixed?p.openPrice.toFixed(2):p.openPrice)
           +'  '+(pnlJPY>=0?'+':'')+'¥'+Math.abs(pnlJPY).toLocaleString(),
-        width:2,dash:[]
+        width:2, dash:[]
       });
+
+      // AI分析のTP・SLがあれば追加
+      if(analysisResult){
+        var tp = analysisResult.tp;
+        var sl = analysisResult.sl;
+        if(tp){
+          entryLines.push({
+            price:tp,
+            color:'#00d97e',
+            label:'✓ 利確目標 '+tp.toFixed(2)
+              +'  +'+(Math.abs((tp - p.openPrice)*( p.volume||0.01)*100*USD_JPY)).toFixed(0)+'円',
+            width:1.5, dash:[6,3]
+          });
+        }
+        if(sl){
+          entryLines.push({
+            price:sl,
+            color:'#ff4d6a',
+            label:'✗ 損切りライン '+sl.toFixed(2)
+              +'  -'+(Math.abs((sl - p.openPrice)*(p.volume||0.01)*100*USD_JPY)).toFixed(0)+'円',
+            width:1.5, dash:[6,3]
+          });
+        }
+      }
     }
   });
   var pnlEl=document.getElementById('pnlVal');
@@ -1095,6 +1120,11 @@ function renderAI(r){
   ac.style.flexDirection='column';
   // 先頭にスクロール
   document.getElementById('aiBody').scrollTop=0;
+
+  // ポジションがあればTP/SLラインをチャートに反映
+  if(mt5Positions.length > 0) {
+    renderPositions();
+  }
 }
 function lineItem(name,price,bg,color){
   return '<div class="line-item"><span class="line-name">'+name+'</span>'

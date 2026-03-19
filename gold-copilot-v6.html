@@ -1718,7 +1718,12 @@ async function executeTrade(side, lot, price){
   if(!MT5_TOKEN || !MT5_ACCOUNT_ID){
     showTrdToast('MT5未接続です', 'var(--red)'); return;
   }
-  var type = side === 'buy' ? 'ORDER_TYPE_BUY' : 'ORDER_TYPE_SELL';
+  // 楽観的UI更新（レスポンスを待たずに即時反映）
+  var curCount = mt5Positions.length;
+  document.getElementById('posCount').textContent = (curCount + 1) + '件';
+  document.getElementById('pnlVal').textContent = '計算中...';
+  document.getElementById('pnlVal').style.color = 'var(--muted)';
+
   var body = {
     actionType: 'ORDER_TYPE_' + side.toUpperCase(),
     symbol: 'XAUUSDs',
@@ -1738,7 +1743,7 @@ async function executeTrade(side, lot, price){
       var data = await res.json();
       if(data.numericCode === 10009 || data.stringCode === 'TRADE_RETCODE_DONE'){
         showTrdToast((side === 'buy' ? '▲ BUY' : '▼ SELL') + ' ' + lot + 'lot — 注文成功', side === 'buy' ? 'var(--green)' : 'var(--red)');
-        setTimeout(fetchMT5Data, 1500);
+        setTimeout(fetchMT5Data, 500);
       } else {
         showTrdToast('注文失敗: ' + (data.stringCode || data.numericCode || 'ERROR'), 'var(--red)');
       }
@@ -1756,6 +1761,13 @@ async function closeAllPositions(){
   }
   if(!mt5Positions.length){ showTrdToast('決済するポジションがありません', 'var(--muted)'); return; }
   var count = mt5Positions.length;
+  // 楽観的UI更新（レスポンスを待たずに即時反映）
+  document.getElementById('posCount').textContent = '0件';
+  var pnlEl = document.getElementById('pnlVal');
+  pnlEl.textContent = '+¥0'; pnlEl.style.color = 'var(--green)';
+  entryLines = [];
+  if(chartData.length) buildChart(chartData, overlayLines);
+
   try {
     var promises = mt5Positions.map(function(p){
       return fetch(
@@ -1769,7 +1781,7 @@ async function closeAllPositions(){
     });
     await Promise.all(promises);
     showTrdToast(count + '件のポジションを決済しました', 'var(--gold)');
-    setTimeout(fetchMT5Data, 1500);
+    setTimeout(fetchMT5Data, 500);
   } catch(e){
     showTrdToast('決済エラー: ' + e.message, 'var(--red)');
   }

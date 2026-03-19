@@ -380,6 +380,10 @@ canvas{display:block;width:100% !important;}
     <div class="modal-handle"></div>
     <div class="modal-title">接続設定</div>
     <div class="m-field">
+      <label>Claude API Key（AI分析用）</label>
+      <input type="password" id="claudeKey" placeholder="sk-ant-...">
+    </div>
+    <div class="m-field">
       <label>TwelveData API Key</label>
       <input type="password" id="twelveKey" placeholder="リアルタイム価格用">
     </div>
@@ -471,6 +475,7 @@ var TWELVE_KEY = '';
 var MT5_TOKEN = '';
 var MT5_ACCOUNT_ID = '';
 var OPENAI_KEY = '';
+var CLAUDE_KEY = '';
 var USD_JPY = 150;
 var mt5Connected = false;
 var mt5Positions = [];
@@ -816,6 +821,7 @@ function updateLivePrice(price) {
 function openSettings(){
   if(MT5_TOKEN) document.getElementById('mt5Token').value=MT5_TOKEN;
   if(MT5_ACCOUNT_ID) document.getElementById('mt5AccountId').value=MT5_ACCOUNT_ID;
+  if(CLAUDE_KEY && document.getElementById('claudeKey')) document.getElementById('claudeKey').value=CLAUDE_KEY;
   if(TWELVE_KEY) document.getElementById('twelveKey').value=TWELVE_KEY;
   document.getElementById('settingsModal').classList.add('show');
 }

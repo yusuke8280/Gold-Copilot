@@ -470,6 +470,7 @@ var analysisResult = null;
 var TWELVE_KEY = '';
 var MT5_TOKEN = '';
 var MT5_ACCOUNT_ID = '';
+var OPENAI_KEY = '';
 var USD_JPY = 150;
 var mt5Connected = false;
 var mt5Positions = [];
@@ -856,6 +857,7 @@ async function connectAll(){
     localStorage.setItem('gc_mt5_token', MT5_TOKEN);
     localStorage.setItem('gc_mt5_account', MT5_ACCOUNT_ID);
     localStorage.setItem('gc_interval', interval);
+
   } catch(e) {}
 
   // TwelveKeyがあればUSD/JPYを自動取得
@@ -1149,6 +1151,9 @@ function showTPSLOnChart(idx){
 
 async function analyzeChart(){
   if(!chartData.length) return;
+  // Claude APIで本格AI分析
+  await analyzeWithGPT();
+  return;
   var last=chartData[chartData.length-1];
   var recent=chartData.slice(-20);
   var highs=recent.map(function(c){return c.h;});
@@ -1209,6 +1214,120 @@ async function analyzeChart(){
   ];
   buildChart(chartData,overlayLines.concat(entryLines));
   renderAI(r);
+}
+
+// ── Claude AIによる本格分析 ──
+async function analyzeWithGPT(){
+  var last = chartData[chartData.length-1];
+  var recent = chartData.slice(-50);
+  var closes = recent.map(function(c){return c.c;});
+  var highs = recent.map(function(c){return c.h;});
+  var lows = recent.map(function(c){return c.l;});
+
+  // RSI計算
+  var gains=0,losses=0;
+  for(var i=1;i<closes.length;i++){
+    var d=closes[i]-closes[i-1];
+    if(d>0)gains+=d;else losses-=d;
+  }
+  var rsi=losses===0?100:Math.round(100-100/(1+(gains/losses)));
+  var ma20=closes.slice(-20).reduce(function(a,b){return a+b;},0)/20;
+  var ma50=closes.reduce(function(a,b){return a+b;},0)/closes.length;
+  var maxH=Math.max.apply(null,highs.slice(-20));
+  var minL=Math.min.apply(null,lows.slice(-20));
+
+  // ポジション情報
+  var posInfo = '';
+  if(mt5Positions.length > 0) {
+    mt5Positions.forEach(function(p){
+      var isBuy = (p.type||'').toLowerCase().includes('buy');
+      var profitRaw = p.unrealizedProfit || p.profit || 0;
+      var rate = p.accountCurrencyExchangeRate || 1;
+      var pnlJPY = Math.round(profitRaw * rate * USD_JPY);
+      posInfo += (isBuy?'BUY':'SELL') + ' ' + p.openPrice + ' (' + (pnlJPY>=0?'+':'') + '¥' + Math.abs(pnlJPY).toLocaleString() + ') ';
+    });
+  }
+
+  var prompt = `あなたはゴールド（XAU/USD）専門のプロトレーダーです。ダウ理論・テクニカル分析・リスク管理のエキスパートです。以下のデータを分析して日本語でトレード判断を提供してください。
+
+【現在の市場データ】
+- 現在価格: ${last.c}
+- 時間足: ${currentTf}分足
+- RSI(14): ${rsi}
+- MA20: ${ma20.toFixed(2)}
+- MA50: ${ma50.toFixed(2)}
+- 直近高値: ${maxH}
+- 直近安値: ${minL}
+- 直近20本の終値: ${closes.slice(-5).join(', ')}
+${posInfo ? '- 保有ポジション: ' + posInfo : '- ポジション: なし'}
+
+以下の形式でJSONのみ返してください（他のテキスト不要）：
+{
+  "signal": "BUY" または "SELL" または "WAIT",
+  "strength": "強" または "中" または "弱",
+  "trend": "トレンドの説明（20文字以内）",
+  "entry": 数値,
+  "tp": 数値,
+  "sl": 数値,
+  "r1": 数値,
+  "r2": 数値,
+  "s1": 数値,
+  "s2": 数値,
+  "chUp": 数値,
+  "chLo": 数値,
+  "analysis": "ダウ理論に基づく詳細分析（100文字程度）",
+  "action": "具体的な対応策（80文字程度）",
+  "risk": "リスク要因（60文字程度）",
+  "rsi": ${rsi},
+  "ma20": ${ma20.toFixed(2)}
+}`;
+
+  // ローディング表示
+  document.getElementById('aiPlaceholder').style.display='flex';
+  document.getElementById('aiPlaceholder').querySelector('.ai-placeholder-text').textContent='Claudeが分析中...';
+  document.getElementById('aiContent').style.display='none';
+
+  try {
+    var res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': OPENAI_KEY,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 1000,
+        messages: [{role:'user', content: prompt}]
+      })
+    });
+
+    if(!res.ok) throw new Error('Claude API error: ' + res.status);
+    var data = await res.json();
+    var text = data.content[0].text.trim();
+    // JSONを抽出
+    var jsonMatch = text.match(/\{[\s\S]*\}/);
+    if(!jsonMatch) throw new Error('JSON parse error');
+    var r = JSON.parse(jsonMatch[0]);
+    analysisResult = r;
+    // S/Rラインをチャートに反映
+    overlayLines=[
+      {price:r.r1,color:'#ff4d6a',label:'R1',width:1.5,dash:[4,3]},
+      {price:r.r2,color:'#ff8099',label:'R2',width:1,dash:[4,3]},
+      {price:r.s1,color:'#00d97e',label:'S1',width:1.5,dash:[4,3]},
+      {price:r.s2,color:'#66ffbb',label:'S2',width:1,dash:[4,3]},
+      {price:r.chUp,color:'#f0b429',label:'CH↑',width:1,dash:[6,3]},
+      {price:r.chLo,color:'#f0b429',label:'CH↓',width:1,dash:[6,3]},
+    ];
+    buildChart(chartData,overlayLines.concat(entryLines));
+    renderAI(r);
+  } catch(err) {
+    console.error('GPT分析エラー:', err);
+    // フォールバック：ルールベース分析を使用
+    document.getElementById('aiPlaceholder').querySelector('.ai-placeholder-text').textContent='分析中...';
+    await analyzeWithRules();
+  }
 }
 
 function renderAI(r){

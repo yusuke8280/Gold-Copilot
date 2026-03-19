@@ -369,6 +369,23 @@ canvas{display:block;width:100% !important;}
   font-family:'Space Mono',monospace;font-size:12px;outline:none;width:100%;
 }
 .trd-tpsl-input:focus{border-color:var(--gold);}
+/* 注文タイプタブ */
+.trd-type-row{display:flex;gap:6px;margin-bottom:14px;}
+.trd-type-btn{
+  flex:1;padding:7px 4px;background:var(--surface2);
+  border:1px solid var(--border);border-radius:8px;
+  font-family:'Space Mono',monospace;font-size:10px;font-weight:700;
+  color:var(--muted);cursor:pointer;letter-spacing:1px;
+}
+.trd-type-btn.active{border-color:var(--gold);color:var(--gold);background:rgba(240,180,41,0.08);}
+.trd-limit-price-wrap{margin-bottom:12px;}
+.trd-limit-price-label{font-size:9px;color:var(--muted);letter-spacing:1px;margin-bottom:4px;}
+.trd-limit-price-input{
+  background:var(--bg);border:1px solid var(--gold);border-radius:8px;
+  padding:9px 10px;color:var(--text);
+  font-family:'Space Mono',monospace;font-size:13px;outline:none;width:100%;
+}
+.trd-limit-price-input:focus{border-color:var(--green);}
 /* トースト */
 .trd-toast{
   position:fixed;bottom:200px;left:50%;transform:translateX(-50%);
@@ -555,6 +572,17 @@ canvas{display:block;width:100% !important;}
   <div class="trd-modal">
     <h3>ORDER CONFIRM</h3>
     <div class="trd-info" id="trdConfirmInfo">BUY 0.10 lot</div>
+    <!-- 注文タイプ選択 -->
+    <div class="trd-type-row">
+      <button class="trd-type-btn active" data-otype="market">成行</button>
+      <button class="trd-type-btn" data-otype="limit">指値</button>
+      <button class="trd-type-btn" data-otype="stop">逆指値</button>
+    </div>
+    <!-- 指値/逆指値価格入力（成行時は非表示） -->
+    <div id="trdLimitWrap" class="trd-limit-price-wrap" style="display:none;">
+      <div class="trd-limit-price-label">注文価格</div>
+      <input type="number" id="trdLimitPrice" step="0.01" class="trd-limit-price-input" placeholder="---.--">
+    </div>
     <div class="trd-price" id="trdConfirmPrice">---.--</div>
     <div class="trd-tpsl-row">
       <div class="trd-tpsl-field">
@@ -1690,6 +1718,7 @@ function initTouchZoom(){
 // ══ TRADE ══
 var _trdLot = 0.10;
 var _trdSide = null; // 'buy' or 'sell'
+var _trdOrderType = 'market'; // 'market' | 'limit' | 'stop'
 var _trdPrice = 0;
 var _trdAsk = 0;
 var _trdBid = 0;
@@ -1715,12 +1744,19 @@ function updateCloseButton(positions){
 
 function openTrdModal(side){
   _trdSide = side;
+  _trdOrderType = 'market';
   _trdPrice = side === 'buy' ? (_trdAsk || lastPrice) : (_trdBid || lastPrice);
   var lot = parseFloat(document.getElementById('lotInput').value) || 0.01;
   var info = (side === 'buy' ? '▲ BUY' : '▼ SELL') + ' ' + lot.toFixed(2) + ' lot';
   document.getElementById('trdConfirmInfo').textContent = info;
   document.getElementById('trdConfirmPrice').textContent = _trdPrice ? _trdPrice.toFixed(2) : '---.--';
   document.getElementById('trdConfirmPrice').style.color = side === 'buy' ? 'var(--green)' : 'var(--red)';
+  // 注文タイプを成行にリセット
+  document.querySelectorAll('.trd-type-btn').forEach(function(b){ b.classList.remove('active'); });
+  document.querySelector('.trd-type-btn[data-otype="market"]').classList.add('active');
+  document.getElementById('trdLimitWrap').style.display = 'none';
+  document.getElementById('trdLimitPrice').value = '';
+  document.getElementById('trdLimitPrice').placeholder = _trdPrice ? _trdPrice.toFixed(2) : '---.--';
   // TP/SL: AI分析結果があれば自動入力、なければ空欄
   var tpEl = document.getElementById('trdTpInput');
   var slEl = document.getElementById('trdSlInput');
@@ -1763,12 +1799,21 @@ async function executeTrade(side, lot, price){
   document.getElementById('pnlVal').textContent = '計算中...';
   document.getElementById('pnlVal').style.color = 'var(--muted)';
 
+  var actionTypeMap = {
+    'market': 'ORDER_TYPE_' + side.toUpperCase(),
+    'limit':  'ORDER_TYPE_' + side.toUpperCase() + '_LIMIT',
+    'stop':   'ORDER_TYPE_' + side.toUpperCase() + '_STOP'
+  };
   var body = {
-    actionType: 'ORDER_TYPE_' + side.toUpperCase(),
+    actionType: actionTypeMap[_trdOrderType] || ('ORDER_TYPE_' + side.toUpperCase()),
     symbol: 'XAUUSDs',
     volume: lot,
     comment: 'GoldCopilot'
   };
+  if(_trdOrderType !== 'market'){
+    var limitPrice = parseFloat(document.getElementById('trdLimitPrice').value);
+    if(!isNaN(limitPrice) && limitPrice > 0) body.openPrice = limitPrice;
+  }
   var tpVal = parseFloat(document.getElementById('trdTpInput').value);
   var slVal = parseFloat(document.getElementById('trdSlInput').value);
   if(!isNaN(tpVal) && tpVal > 0) body.takeProfit = tpVal;
@@ -1859,13 +1904,44 @@ window.addEventListener('DOMContentLoaded', function(){
   document.getElementById('trdCloseBtn').addEventListener('click', function(){
     if(confirm('全ポジションを決済しますか？')) closeAllPositions();
   });
+  // 注文タイプタブ
+  document.querySelectorAll('.trd-type-btn').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      document.querySelectorAll('.trd-type-btn').forEach(function(b){ b.classList.remove('active'); });
+      btn.classList.add('active');
+      _trdOrderType = btn.dataset.otype;
+      var wrap = document.getElementById('trdLimitWrap');
+      if(_trdOrderType === 'market'){
+        wrap.style.display = 'none';
+      } else {
+        wrap.style.display = 'block';
+        document.getElementById('trdLimitPrice').placeholder = _trdPrice ? _trdPrice.toFixed(2) : '---.--';
+      }
+      document.getElementById('trdTpslErr').style.display = 'none';
+    });
+  });
   // 注文確定ボタン
   document.getElementById('trdConfirmOk').addEventListener('click', function(){
     var lot = parseFloat(document.getElementById('lotInput').value) || 0.01;
     var tp = parseFloat(document.getElementById('trdTpInput').value);
     var sl = parseFloat(document.getElementById('trdSlInput').value);
     var errEl = document.getElementById('trdTpslErr');
-    // バリデーション: TP/SL両方入力されている場合のみ方向チェック
+    // 指値/逆指値バリデーション
+    if(_trdOrderType !== 'market'){
+      var lp = parseFloat(document.getElementById('trdLimitPrice').value);
+      if(isNaN(lp) || lp <= 0){
+        errEl.textContent = '注文価格を入力してください'; errEl.style.display = 'block'; return;
+      }
+      if(_trdOrderType === 'limit'){
+        if(_trdSide === 'buy' && lp >= _trdPrice){
+          errEl.textContent = '指値BUYは現在価格より低い価格を入力してください'; errEl.style.display = 'block'; return;
+        }
+        if(_trdSide === 'sell' && lp <= _trdPrice){
+          errEl.textContent = '指値SELLは現在価格より高い価格を入力してください'; errEl.style.display = 'block'; return;
+        }
+      }
+    }
+    // TP/SLバリデーション
     if(!isNaN(tp) && !isNaN(sl) && tp > 0 && sl > 0){
       if(_trdSide === 'buy' && tp <= sl){
         errEl.textContent = 'BUYはTP > SLにしてください'; errEl.style.display = 'block'; return;

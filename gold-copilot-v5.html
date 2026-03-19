@@ -1298,9 +1298,9 @@ ${posInfo ? '- 保有ポジション: ' + posInfo : '- ポジション: なし'}
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': OPENAI_KEY,
+        'x-api-key': CLAUDE_KEY,
         'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true'
+        'anthropic-dangerous-direct-browser-calls': 'true'
       },
       body: JSON.stringify({
         model: 'claude-haiku-4-5-20251001',

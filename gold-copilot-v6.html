@@ -346,10 +346,6 @@ canvas{display:block;width:100% !important;}
   display:none;
 }
 .t-close.show{display:block;}
-.t-ring{
-  display:inline-block;width:8px;height:8px;border-radius:50%;
-  margin-right:4px;background:currentColor;
-}
 /* 確認オーバーレイ */
 .trd-overlay{
   display:none;position:fixed;inset:0;background:rgba(0,0,0,0.8);
@@ -526,22 +522,19 @@ canvas{display:block;width:100% !important;}
 <div class="trade-panel" id="tradePanel">
   <div class="trade-lot-row">
     <label>LOT</label>
-    <button class="lot-btn" data-lot="0.01">0.01</button>
-    <button class="lot-btn active" data-lot="0.10">0.10</button>
-    <button class="lot-btn" data-lot="0.50">0.50</button>
-    <button class="lot-btn" data-lot="1.00">1.00</button>
-    <input type="number" id="lotInput" value="0.10" step="0.01" min="0.01"
+    <button class="lot-btn active" data-lot="0.01">0.01</button>
+    <button class="lot-btn" data-lot="0.02">0.02</button>
+    <button class="lot-btn" data-lot="0.03">0.03</button>
+    <input type="number" id="lotInput" value="0.01" step="0.01" min="0.01"
       style="width:64px;background:var(--bg);border:1px solid var(--border);border-radius:6px;
              padding:4px 6px;color:var(--text);font-family:'Space Mono',monospace;font-size:11px;outline:none;">
   </div>
   <div class="trade-btn-row">
-    <button class="trade-btn t-buy" id="trdBuyBtn">
-      <span class="t-ring"></span>BUY<br>
+    <button class="trade-btn t-buy" id="trdBuyBtn">BUY<br>
       <span id="trdAskPrice" style="font-size:14px;letter-spacing:0;">---.--</span>
     </button>
     <button class="t-close show" id="trdCloseBtn">全決済</button>
-    <button class="trade-btn t-sell" id="trdSellBtn">
-      <span class="t-ring"></span>SELL<br>
+    <button class="trade-btn t-sell" id="trdSellBtn">SELL<br>
       <span id="trdBidPrice" style="font-size:14px;letter-spacing:0;">---.--</span>
     </button>
   </div>
@@ -1697,10 +1690,11 @@ function updateCloseButton(positions){
   }
 }
 
-function showTrdOverlay(side){
+function openTrdModal(side){
   _trdSide = side;
   _trdPrice = side === 'buy' ? (_trdAsk || lastPrice) : (_trdBid || lastPrice);
-  var info = (side === 'buy' ? '▲ BUY' : '▼ SELL') + ' ' + _trdLot + ' lot';
+  var lot = parseFloat(document.getElementById('lotInput').value) || 0.01;
+  var info = (side === 'buy' ? '▲ BUY' : '▼ SELL') + ' ' + lot.toFixed(2) + ' lot';
   document.getElementById('trdConfirmInfo').textContent = info;
   document.getElementById('trdConfirmPrice').textContent = _trdPrice ? _trdPrice.toFixed(2) : '---.--';
   document.getElementById('trdConfirmPrice').style.color = side === 'buy' ? 'var(--green)' : 'var(--red)';
@@ -1782,31 +1776,29 @@ async function closeAllPositions(){
 }
 
 window.addEventListener('DOMContentLoaded', function(){
-  // ロットボタン
+  // LOTプリセットボタン
   document.querySelectorAll('.lot-btn').forEach(function(btn){
     btn.addEventListener('click', function(){
       document.querySelectorAll('.lot-btn').forEach(function(b){ b.classList.remove('active'); });
       btn.classList.add('active');
-      _trdLot = parseFloat(btn.dataset.lot);
-      document.getElementById('lotInput').value = _trdLot.toFixed(2);
+      document.getElementById('lotInput').value = parseFloat(btn.dataset.lot).toFixed(2);
     });
   });
-  // ロット入力フィールド
+  // LOT手動入力
   document.getElementById('lotInput').addEventListener('change', function(){
     var v = parseFloat(this.value);
     if(!isNaN(v) && v > 0){
-      _trdLot = Math.round(v * 100) / 100;
-      this.value = _trdLot.toFixed(2);
+      this.value = (Math.round(v * 100) / 100).toFixed(2);
       document.querySelectorAll('.lot-btn').forEach(function(b){ b.classList.remove('active'); });
     }
   });
   // BUYボタン
   document.getElementById('trdBuyBtn').addEventListener('click', function(){
-    showTrdOverlay('buy');
+    openTrdModal('buy');
   });
   // SELLボタン
   document.getElementById('trdSellBtn').addEventListener('click', function(){
-    showTrdOverlay('sell');
+    openTrdModal('sell');
   });
   // 全決済ボタン
   document.getElementById('trdCloseBtn').addEventListener('click', function(){
@@ -1814,8 +1806,9 @@ window.addEventListener('DOMContentLoaded', function(){
   });
   // 注文確定ボタン
   document.getElementById('trdConfirmOk').addEventListener('click', function(){
+    var lot = parseFloat(document.getElementById('lotInput').value) || 0.01;
     closeTrdOverlay();
-    executeTrade(_trdSide, _trdLot, _trdPrice);
+    executeTrade(_trdSide, lot, _trdPrice);
   });
   // オーバーレイ外タップで閉じる
   document.getElementById('trdOverlay').addEventListener('click', function(e){

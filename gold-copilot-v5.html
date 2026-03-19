@@ -723,7 +723,7 @@ function buildChart(candles, lines) {
     },
     options:{
       responsive:false,
-      animation:{duration:0},
+      animation:{duration:150,easing:"easeOutQuart"},
       plugins:{
         legend:{display:false},
         tooltip:{callbacks:{label:function(ctx){

@@ -1358,6 +1358,67 @@ function initTouchZoom(){
     e.preventDefault();
   },{passive:false});
   c.addEventListener('touchend',function(){_tz.isPan=false;});
+
+  // ── PCマウスホイールズーム ──
+  c.addEventListener('wheel',function(e){
+    e.preventDefault();
+    if(!chartInstance||!chartData.length) return;
+    var x=chartInstance.scales.x;
+    var total=chartData.length;
+    var curMin=x.options.min!==undefined?x.options.min:0;
+    var curMax=x.options.max!==undefined?x.options.max:total-1;
+    var range=curMax-curMin;
+    var factor=e.deltaY>0?1.15:0.87;
+    var newRange=Math.max(5,Math.min(total,range*factor));
+    var center=(curMin+curMax)/2;
+    var newMin=Math.max(0,center-newRange/2);
+    var newMax=Math.min(total-1,center+newRange/2);
+    x.options.min=newMin; x.options.max=newMax;
+    _tz.vMin=newMin; _tz.vMax=newMax;
+    fitYAxis(newMin,newMax);
+    chartInstance.update('none');
+  },{passive:false});
+
+  // ── PCマウスドラッグパン ──
+  var _mouse={isDragging:false,startX:0,vMin:0,vMax:0};
+  c.addEventListener('mousedown',function(e){
+    _mouse.isDragging=true;
+    _mouse.startX=e.clientX;
+    if(chartInstance){var x=chartInstance.scales.x;_mouse.vMin=x.options.min||0;_mouse.vMax=x.options.max||chartData.length-1;}
+    c.style.cursor='grabbing';
+  });
+  window.addEventListener('mousemove',function(e){
+    if(!_mouse.isDragging||!chartInstance||!chartData.length) return;
+    var x=chartInstance.scales.x;
+    var total=chartData.length;
+    var range=_mouse.vMax-_mouse.vMin;
+    var dx=e.clientX-_mouse.startX;
+    var shift=-dx/c.offsetWidth*range;
+    var newMin=Math.max(0,_mouse.vMin+shift);
+    var newMax=Math.min(total-1,_mouse.vMax+shift);
+    x.options.min=newMin; x.options.max=newMax;
+    fitYAxis(newMin,newMax);
+    chartInstance.update('none');
+  });
+  window.addEventListener('mouseup',function(){
+    _mouse.isDragging=false;
+    c.style.cursor='crosshair';
+  });
+  c.style.cursor='crosshair';
+
+  // ダブルクリックでリセット（PC）
+  c.addEventListener('dblclick',function(){
+    if(chartInstance){
+      chartInstance.scales.x.options.min=undefined;
+      chartInstance.scales.x.options.max=undefined;
+      var allP=[].concat(chartData.map(function(d){return d.l;}),chartData.map(function(d){return d.h;}));
+      overlayLines.concat(entryLines).forEach(function(l){if(l.price>0)allP.push(l.price);});
+      chartInstance.options.scales.y.min=Math.min.apply(null,allP)*0.9994;
+      chartInstance.options.scales.y.max=Math.max.apply(null,allP)*1.0006;
+      chartInstance.update('none');
+    }
+  });
+
   // ダブルタップでリセット
   var lastTap=0;
   c.addEventListener('touchend',function(){

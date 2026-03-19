@@ -1157,9 +1157,9 @@ function showTPSLOnChart(idx){
 
 async function analyzeChart(){
   if(!chartData.length) return;
-  // Claude APIで本格AI分析
-  await analyzeWithGPT();
-  return;
+  // Claude APIで本格分析
+  if(CLAUDE_KEY) { await analyzeWithClaude(); return; }
+  // ルールベース分析（フォールバック）
   var last=chartData[chartData.length-1];
   var recent=chartData.slice(-20);
   var highs=recent.map(function(c){return c.h;});
@@ -1223,7 +1223,7 @@ async function analyzeChart(){
 }
 
 // ── Claude AIによる本格分析 ──
-async function analyzeWithGPT(){
+async function analyzeWithClaude(){
   var last = chartData[chartData.length-1];
   var recent = chartData.slice(-50);
   var closes = recent.map(function(c){return c.c;});
@@ -1332,7 +1332,7 @@ ${posInfo ? '- 保有ポジション: ' + posInfo : '- ポジション: なし'}
     console.error('GPT分析エラー:', err);
     // フォールバック：ルールベース分析を使用
     document.getElementById('aiPlaceholder').querySelector('.ai-placeholder-text').textContent='分析中...';
-    await analyzeWithRules();
+    OPENAI_KEY = ""; CLAUDE_KEY = ""; await analyzeChart();
   }
 }
 

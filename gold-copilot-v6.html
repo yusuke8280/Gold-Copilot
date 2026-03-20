@@ -1362,7 +1362,6 @@ async function fetchPositionHistory(){
     var closedDeals = data.filter(function(d){
       return d.entryType === 'DEAL_ENTRY_OUT';
     });
-    console.log('deals sample:', JSON.stringify(closedDeals.slice(0,3)));
     positionHistory = closedDeals.sort(function(a,b){ return new Date(b.time||0) - new Date(a.time||0); })
       .slice(0, 20);
     document.getElementById('histCount').textContent = positionHistory.length + '件';
@@ -1381,8 +1380,8 @@ function renderHistModal(){
     el.innerHTML = '<div style="text-align:center;color:var(--muted);padding:20px;">履歴なし</div>';
     return;
   }
-  // profitはすでにUSD建て → JPY変換のみ
-  var totalPnl = positionHistory.reduce(function(s,d){ return s + (parseFloat(d.profit||0) * USD_JPY); }, 0);
+  // profitはJPY建てで返ってくるためそのまま合算
+  var totalPnl = positionHistory.reduce(function(s,d){ return s + (parseFloat(d.profit||0)); }, 0);
   var totalColor = totalPnl >= 0 ? 'var(--green)' : 'var(--red)';
   var html = '<div style="text-align:center;margin-bottom:16px;">'
     + '<div style="font-size:10px;color:var(--muted);letter-spacing:1px;">合計損益（直近20件）</div>'
@@ -1391,7 +1390,7 @@ function renderHistModal(){
     + '</div></div>';
   positionHistory.forEach(function(d){
     var isBuy = d.type === 'DEAL_TYPE_BUY';
-    var pnlJpy = Math.round((parseFloat(d.profit||0)) * USD_JPY);
+    var pnlJpy = Math.round(parseFloat(d.profit||0));
     var pnlColor = pnlJpy >= 0 ? 'var(--green)' : 'var(--red)';
     var timeStr = d.time ? new Date(d.time).toLocaleString('ja-JP',{timeZone:'Asia/Tokyo',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}) : '--';
     var badgeColor = isBuy ? 'var(--green)' : 'var(--red)';

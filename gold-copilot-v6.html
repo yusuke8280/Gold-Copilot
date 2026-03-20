@@ -730,7 +730,7 @@ function initChartSize() {
   var vh = window.innerHeight;
   var hasBalance = document.getElementById('balanceBar').classList.contains('show');
   var topOffset = hasBalance ? 122 : 88;
-  var chartH = vh - topOffset - 170; // ボトムバー60px + トレードパネル86px + X軸ラベル24px
+  var chartH = vh - topOffset - 185; // ボトムバー60px + トレードパネル86px + X軸ラベル39px
   chartH = Math.max(chartH, 250);
   var ca = document.getElementById('chartArea');
   var canvas = document.getElementById('mainChart');
@@ -906,6 +906,7 @@ function buildChart(candles, lines) {
     options:{
       responsive:false,
       animation:{duration:150,easing:"easeOutQuart"},
+      layout:{padding:{bottom:20}},
       plugins:{
         legend:{display:false},
         tooltip:{callbacks:{label:function(ctx){
@@ -914,8 +915,8 @@ function buildChart(candles, lines) {
         }}}
       },
       scales:{
-        x:{ticks:{color:'#a0c0e0',font:{size:11,family:'Space Mono'},maxTicksLimit:6,
-             padding:8,maxRotation:0},
+        x:{ticks:{display:true,color:'#a0c0e0',font:{size:11,family:'Space Mono'},maxTicksLimit:6,
+             padding:10,maxRotation:0},
            grid:{color:'rgba(30,45,68,0.5)'}},
         y:{position:'right',
            min:yAxisMin,

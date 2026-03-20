@@ -680,6 +680,8 @@ var mt5Connected = false;
 var mt5Positions = [];
 var mt5Timer = null;
 var priceTimer = null;
+var wsConnection = null;
+var wsReconnectTimer = null;
 var lastPrice = 0;
 var chartLoadedWithMT5 = false; // MT5データでチャートを読み込み済みフラグ
 
@@ -1092,12 +1094,14 @@ async function connectAll(){
     updateBadge(true);
     showSettingsStatus('MT5接続成功！','ok');
     if(mt5Timer) clearInterval(mt5Timer);
-    if(priceTimer) clearInterval(priceTimer);
-    mt5Timer = setInterval(fetchMT5Data, interval*1000);
-    priceTimer = setInterval(fetchLivePrice, 5000);
+    if(priceTimer) { clearInterval(priceTimer); priceTimer = null; }
+    // ポーリングはバックアップとして30秒間隔で維持
+    mt5Timer = setInterval(fetchMT5Data, 30*1000);
     // USD/JPYを30分ごとに自動更新
     setInterval(fetchUSDJPY, 30*60*1000);
     fetchPositionHistory();
+    // WebSocket接続開始
+    connectWebSocket();
     setTimeout(closeSettings,1200);
   } else {
     showSettingsStatus('接続失敗。TokenとAccount IDを確認してください','err');
@@ -1107,6 +1111,8 @@ async function connectAll(){
 function disconnectAll(){
   if(mt5Timer){clearInterval(mt5Timer);mt5Timer=null;}
   if(priceTimer){clearInterval(priceTimer);priceTimer=null;}
+  if(wsConnection){wsConnection.close();wsConnection=null;}
+  if(wsReconnectTimer){clearTimeout(wsReconnectTimer);wsReconnectTimer=null;}
   mt5Connected=false; mt5Positions=[];
   MT5_TOKEN=''; MT5_ACCOUNT_ID=''; TWELVE_KEY='';
   try { localStorage.removeItem('gc_twelve_key'); localStorage.removeItem('gc_mt5_token');
@@ -1123,6 +1129,79 @@ function updateBadge(connected){
   var t=document.getElementById('mt5BadgeText');
   if(connected){b.classList.add('connected');t.textContent='MT5 ●';}
   else{b.classList.remove('connected');t.textContent='設定';}
+}
+
+async function connectWebSocket() {
+  if(wsConnection) wsConnection.close();
+  var url = 'wss://mt-client-api-v1.london.agiliumtrade.ai/ws/rpc/v14';
+  wsConnection = new WebSocket(url + '?auth-token=' + MT5_TOKEN);
+  wsConnection.onopen = function() {
+    console.log('WebSocket接続成功');
+    wsConnection.send(JSON.stringify({
+      type: 'subscribe',
+      accountId: MT5_ACCOUNT_ID
+    }));
+  };
+  wsConnection.onmessage = function(e) {
+    try {
+      var msg = JSON.parse(e.data);
+      handleWsMessage(msg);
+    } catch(err) {}
+  };
+  wsConnection.onclose = function() {
+    console.log('WebSocket切断・5秒後に再接続');
+    if(mt5Connected) wsReconnectTimer = setTimeout(connectWebSocket, 5000);
+  };
+  wsConnection.onerror = function(e) {
+    console.error('WebSocketエラー:', e);
+  };
+}
+
+function handleWsMessage(msg) {
+  if(!msg || !msg.type) return;
+
+  if(msg.type === 'prices' && msg.prices) {
+    msg.prices.forEach(function(p) {
+      if(p.symbol === 'XAUUSDs') {
+        var bid = parseFloat(p.bid || 0);
+        var ask = parseFloat(p.ask || 0);
+        if(bid > 0) updateLivePrice(bid);
+        if(ask > 0 || bid > 0) updateTradePrices(ask || bid, bid);
+      }
+    });
+  }
+
+  if(msg.type === 'accountInformation') {
+    var info = msg.accountInformation;
+    if(info) {
+      document.getElementById('balVal').textContent =
+        '¥' + Math.round(info.balance).toLocaleString();
+      document.getElementById('equityVal').textContent =
+        '¥' + Math.round(info.equity).toLocaleString();
+    }
+  }
+
+  if(msg.type === 'positions') {
+    mt5Positions = msg.positions || [];
+    renderPositions();
+  }
+
+  if(msg.type === 'position') {
+    var pos = msg.position;
+    var idx = mt5Positions.findIndex(function(p) {
+      return p.id === pos.id;
+    });
+    if(idx >= 0) mt5Positions[idx] = pos;
+    else mt5Positions.push(pos);
+    renderPositions();
+  }
+
+  if(msg.type === 'positionRemoved') {
+    mt5Positions = mt5Positions.filter(function(p) {
+      return p.id !== msg.positionId;
+    });
+    renderPositions();
+  }
 }
 
 async function fetchMT5Data(){

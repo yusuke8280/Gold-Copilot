@@ -793,9 +793,10 @@ async function fetchMetaApiCandles(tf, count) {
     if(!Array.isArray(data) || !data.length) return null;
     return data.map(function(v){
       // brokerTimeはMT5表示時刻そのまま使う（変換不要）
-      var t = new Date(v.brokerTime || v.time).getTime();
+      var bt = v.brokerTime || '';
+      var t = new Date(bt || v.time).getTime();
       return {
-        t: t,
+        t: t, bt: bt,
         o: +v.open, h: +v.high, l: +v.low, c: +v.close
       };
     }).sort(function(a,b){return a.t-b.t;});
@@ -849,7 +850,17 @@ function buildChart(candles, lines) {
   var yAxisMax = Math.max.apply(null, allPrices) * 1.0006;
 
   // JST統一表示（MM/DD HH:mm 形式）
+  // btがある場合はbrokerTime文字列を直接パース（二重変換防止）
+  // btがない場合（TwelveData/Demo）はAsia/Tokyoで変換
   var labels = candles.map(function(c){
+    if(c.bt){
+      // "2026-03-20 08:15:00" 形式を直接分解
+      var parts = c.bt.replace('T',' ').substring(0,16); // "2026-03-20 08:15"
+      var m = parts.substring(5,7), d2 = parts.substring(8,10);
+      var hm = parts.substring(11,16); // "HH:mm"
+      if(currentTf==='1D'||currentTf==='1W') return m+'/'+d2;
+      return m+'/'+d2+' '+hm;
+    }
     var d = new Date(c.t);
     if(currentTf==='1D'||currentTf==='1W'){
       return d.toLocaleDateString('ja-JP',{month:'2-digit',day:'2-digit',timeZone:'Asia/Tokyo'});
@@ -915,8 +926,8 @@ function buildChart(candles, lines) {
         }}}
       },
       scales:{
-        x:{ticks:{display:true,color:'#a0c0e0',font:{size:11,family:'Space Mono'},maxTicksLimit:6,
-             padding:10,maxRotation:0},
+        x:{ticks:{display:true,color:'#a0c0e0',font:{size:11,family:'Space Mono'},maxTicksLimit:4,
+             padding:10,maxRotation:0,autoSkip:true,autoSkipPadding:20},
            grid:{color:'rgba(30,45,68,0.5)'}},
         y:{position:'right',
            min:yAxisMin,

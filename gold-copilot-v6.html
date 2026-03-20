@@ -795,9 +795,14 @@ async function fetchMetaApiCandles(tf, count) {
     var data = await res.json();
     if(!Array.isArray(data) || !data.length) return null;
     return data.map(function(v){
-      // brokerTimeはMT5表示時刻そのまま使う（変換不要）
+      // brokerTimeをEEST(UTC+3)として正しくパース
       var bt = v.brokerTime || '';
-      var t = new Date(bt || v.time).getTime();
+      var t;
+      if(bt){
+        t = new Date(bt.replace(' ','T')+'+03:00').getTime();
+      } else {
+        t = new Date(v.time).getTime();
+      }
       return {
         t: t, bt: bt,
         o: +v.open, h: +v.high, l: +v.low, c: +v.close
@@ -1153,8 +1158,9 @@ async function fetchMT5Data(){
       if(ask>0||bid>0) updateTradePrices(ask||bid, bid);
       // ブローカー時刻オフセットを記録（EESTなどJSTと異なる場合の補正用）
       if(pd.brokerTime){
-        var brokerMs = new Date(pd.brokerTime).getTime();
-        if(brokerMs > 0) brokerTimeOffset = brokerMs - Date.now();
+        var btStr = pd.brokerTime;
+        var serverMs = new Date(btStr.replace(' ','T')+'+03:00').getTime();
+        if(serverMs > 0) brokerTimeOffset = serverMs - Date.now();
       }
     }
     return true;

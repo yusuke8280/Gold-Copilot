@@ -799,7 +799,7 @@ async function fetchMetaApiCandles(tf, count) {
       var bt = v.brokerTime || '';
       var t;
       if(bt){
-        t = new Date(bt.replace(' ','T')+'+02:00').getTime();
+        t = new Date(bt.replace(' ','T')+'+08:00').getTime();
       } else {
         t = new Date(v.time).getTime();
       }
@@ -1159,7 +1159,7 @@ async function fetchMT5Data(){
       // ブローカー時刻オフセットを記録（EESTなどJSTと異なる場合の補正用）
       if(pd.brokerTime){
         var btStr = pd.brokerTime;
-        var serverMs = new Date(btStr.replace(' ','T')+'+02:00').getTime();
+        var serverMs = new Date(btStr.replace(' ','T')+'+08:00').getTime();
         if(serverMs > 0) brokerTimeOffset = serverMs - Date.now();
       }
     }

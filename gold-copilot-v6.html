@@ -6,6 +6,9 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>GOLD Copilot</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#080c12">
+<link rel="apple-touch-icon" href="icon-192.png">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&display=swap');
@@ -1971,6 +1974,11 @@ function fitYAxis(minIdx,maxIdx){
   });
   chartInstance.options.scales.y.min=Math.min.apply(null,ls)*0.9994;
   chartInstance.options.scales.y.max=Math.max.apply(null,hs)*1.0006;
+}
+</script>
+<script>
+if('serviceWorker' in navigator){
+  navigator.serviceWorker.register('./sw.js');
 }
 </script>
 </body>

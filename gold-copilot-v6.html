@@ -799,7 +799,8 @@ async function fetchMetaApiCandles(tf, count) {
       var bt = v.brokerTime || '';
       var t;
       if(bt){
-        t = new Date(bt.replace(' ','T')+'+08:00').getTime();
+        // タイムゾーン変換なし・ローカル時刻としてそのままパース
+        t = new Date(bt.replace(' ','T')).getTime();
       } else {
         t = new Date(v.time).getTime();
       }
@@ -857,17 +858,15 @@ function buildChart(candles, lines) {
   var yAxisMin = Math.min.apply(null, allPrices) * 0.9994;
   var yAxisMax = Math.max.apply(null, allPrices) * 1.0006;
 
-  // JST統一表示（MM/DD HH:mm 形式）
-  // btがある場合はbrokerTime文字列を直接パース（二重変換防止）
-  // btがない場合（TwelveData/Demo）はAsia/Tokyoで変換
-  var labels = candles.map(function(c){
+  // brokerTime文字列を直接表示（タイムゾーン変換なし）
+  var labels = candles.map(function(c, i, arr){
     if(c.bt){
-      // "2026-03-20 08:15:00" 形式を直接分解
-      var parts = c.bt.replace('T',' ').substring(0,16); // "2026-03-20 08:15"
-      var m = parts.substring(5,7), d2 = parts.substring(8,10);
-      var hm = parts.substring(11,16); // "HH:mm"
-      if(currentTf==='1D'||currentTf==='1W') return m+'/'+d2;
-      return m+'/'+d2+' '+hm;
+      var parts = c.bt.split(' ');
+      var datePart = parts[0].slice(5).replace('-','/');
+      var timePart = parts[1] ? parts[1].slice(0,5) : '';
+      if(currentTf==='1D'||currentTf==='1W') return datePart;
+      var prev = i > 0 && arr[i-1].bt ? arr[i-1].bt.split(' ')[0].slice(5).replace('-','/') : null;
+      return (i===0 || datePart !== prev) ? datePart+' '+timePart : timePart;
     }
     var d = new Date(c.t);
     if(currentTf==='1D'||currentTf==='1W'){
@@ -1156,12 +1155,8 @@ async function fetchMT5Data(){
       var ask=parseFloat(pd.ask||0);
       if(bid>0) updateLivePrice(bid);
       if(ask>0||bid>0) updateTradePrices(ask||bid, bid);
-      // ブローカー時刻オフセットを記録（EESTなどJSTと異なる場合の補正用）
-      if(pd.brokerTime){
-        var btStr = pd.brokerTime;
-        var serverMs = new Date(btStr.replace(' ','T')+'+08:00').getTime();
-        if(serverMs > 0) brokerTimeOffset = serverMs - Date.now();
-      }
+      // brokerTimeOffsetは不要（変換なし）
+      brokerTimeOffset = 0;
     }
     return true;
   } catch(e){ return false; }

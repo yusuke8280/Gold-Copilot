@@ -57,7 +57,7 @@ html,body{
   background:var(--surface);border-bottom:1px solid var(--border);
   padding:5px 14px;
   display:none;
-  grid-template-columns:repeat(4,1fr);gap:4px;
+  grid-template-columns:repeat(5,1fr);gap:4px;
 }
 .balance-bar.show{display:grid !important;}
 .bal-item{display:flex;flex-direction:column;align-items:center;}
@@ -433,6 +433,7 @@ canvas{display:block;width:100% !important;}
   <div class="bal-item"><div class="bal-label">証拠金</div><div class="bal-value" id="equityVal">---</div></div>
   <div class="bal-item"><div class="bal-label">含み損益</div><div class="bal-value" id="pnlVal">¥0</div></div>
   <div class="bal-item" onclick="openPosModal()" style="cursor:pointer;"><div class="bal-label">ポジション ▶</div><div class="bal-value" id="posCount" style="color:var(--gold);">0件</div></div>
+  <div class="bal-item" onclick="openHistModal()" style="cursor:pointer;"><div class="bal-label">履歴 ▶</div><div class="bal-value" id="histCount" style="color:var(--gold);">---</div></div>
 </div>
 
 <!-- TF BAR -->
@@ -610,6 +611,16 @@ canvas{display:block;width:100% !important;}
   </div>
 </div>
 
+<!-- 履歴モーダル -->
+<div class="pos-modal-overlay" id="histModal">
+  <div class="pos-modal">
+    <div class="modal-handle"></div>
+    <div class="modal-title">TRADE HISTORY</div>
+    <div id="histModalContent"><div style="text-align:center;color:var(--muted);padding:20px;">読み込み中...</div></div>
+    <button class="modal-close" onclick="closeHistModal()">CLOSE</button>
+  </div>
+</div>
+
 <!-- トレード確認モーダル -->
 <div class="trd-overlay" id="trdOverlay">
   <div class="trd-modal">
@@ -716,7 +727,7 @@ window.addEventListener('DOMContentLoaded', function(){
     analyzeChart();
   });
   // 設定モーダルの外側タップで閉じる
-  ['settingsModal','pnlModal','posModal'].forEach(function(id){
+  ['settingsModal','pnlModal','posModal','histModal'].forEach(function(id){
     document.getElementById(id).addEventListener('click', function(e){
       if(e.target === this) this.classList.remove('show');
     });
@@ -1086,6 +1097,7 @@ async function connectAll(){
     priceTimer = setInterval(fetchLivePrice, 5000);
     // USD/JPYを30分ごとに自動更新
     setInterval(fetchUSDJPY, 30*60*1000);
+    fetchPositionHistory();
     setTimeout(closeSettings,1200);
   } else {
     showSettingsStatus('接続失敗。TokenとAccount IDを確認してください','err');
@@ -1330,6 +1342,74 @@ function openPosModal(){
 }
 
 function closePosModal(){ document.getElementById('posModal').classList.remove('show'); }
+
+// ── 履歴モーダル ──
+var positionHistory = [];
+
+async function fetchPositionHistory(){
+  if(!MT5_TOKEN || !MT5_ACCOUNT_ID) return;
+  var endTime = new Date().toISOString();
+  var startTime = new Date(Date.now() - 30*24*60*60*1000).toISOString();
+  try {
+    var url = 'https://mt-client-api-v1.london.agiliumtrade.ai/users/current/accounts/'
+      + MT5_ACCOUNT_ID + '/history-deals/time/'
+      + encodeURIComponent(startTime) + '/' + encodeURIComponent(endTime);
+    var res = await fetch(url, {headers:{'auth-token':MT5_TOKEN}});
+    if(!res.ok) return;
+    var data = await res.json();
+    if(!Array.isArray(data)) return;
+    // 決済側（entryType==='deal'かつtype==='DEAL_TYPE_BUY'/'DEAL_TYPE_SELL'）のみ
+    positionHistory = data.filter(function(d){
+      return d.type === 'DEAL_TYPE_BUY' || d.type === 'DEAL_TYPE_SELL';
+    }).sort(function(a,b){ return new Date(b.time||b.brokerTime||0) - new Date(a.time||a.brokerTime||0); })
+      .slice(0, 20);
+    document.getElementById('histCount').textContent = data.length + '件';
+  } catch(e) {}
+}
+
+function openHistModal(){
+  fetchPositionHistory().then(function(){ renderHistModal(); });
+  document.getElementById('histModal').classList.add('show');
+}
+function closeHistModal(){ document.getElementById('histModal').classList.remove('show'); }
+
+function renderHistModal(){
+  var el = document.getElementById('histModalContent');
+  if(!positionHistory.length){
+    el.innerHTML = '<div style="text-align:center;color:var(--muted);padding:20px;">履歴なし</div>';
+    return;
+  }
+  var totalPnl = positionHistory.reduce(function(s,d){ return s + (parseFloat(d.profit||0)*USD_JPY); }, 0);
+  var totalColor = totalPnl >= 0 ? 'var(--green)' : 'var(--red)';
+  var html = '<div style="text-align:center;margin-bottom:16px;">'
+    + '<div style="font-size:10px;color:var(--muted);letter-spacing:1px;">合計損益（直近20件）</div>'
+    + '<div style="font-size:24px;font-weight:700;color:'+totalColor+';">'
+    + (totalPnl>=0?'+':'') + '¥' + Math.round(totalPnl).toLocaleString()
+    + '</div></div>';
+  positionHistory.forEach(function(d){
+    var isBuy = d.type === 'DEAL_TYPE_BUY';
+    var pnlJpy = parseFloat(d.profit||0) * USD_JPY;
+    var pnlColor = pnlJpy >= 0 ? 'var(--green)' : 'var(--red)';
+    var timeMs = d.time ? new Date(d.time).getTime() : (d.brokerTime ? new Date(d.brokerTime.replace(' ','T')+'Z').getTime() : 0);
+    var timeStr = timeMs ? new Date(timeMs).toLocaleString('ja-JP',{timeZone:'Asia/Tokyo',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}) : '--';
+    var badgeColor = isBuy ? 'var(--green)' : 'var(--red)';
+    var badgeText = isBuy ? 'BUY' : 'SELL';
+    html += '<div class="pos-item">'
+      + '<div class="pos-item-header">'
+      + '<div style="display:flex;align-items:center;gap:8px;">'
+      + '<span style="font-size:10px;font-weight:700;color:'+badgeColor+';border:1px solid '+badgeColor+';border-radius:4px;padding:2px 6px;">'+badgeText+'</span>'
+      + '<span style="font-size:11px;color:var(--muted);">'+timeStr+'</span>'
+      + '</div>'
+      + '<div style="font-size:18px;font-weight:700;color:'+pnlColor+';">'+(pnlJpy>=0?'+':'')+'¥'+Math.round(pnlJpy).toLocaleString()+'</div>'
+      + '</div>'
+      + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">'
+      + '<div class="pos-item-cell"><div class="pos-item-label">ロット</div><div class="pos-item-value">'+(parseFloat(d.volume||0).toFixed(2))+'</div></div>'
+      + '<div class="pos-item-cell"><div class="pos-item-label">価格</div><div class="pos-item-value">'+(parseFloat(d.price||0).toFixed(2))+'</div></div>'
+      + '</div>'
+      + '</div>';
+  });
+  el.innerHTML = html;
+}
 
 function showTPSLOnChart(idx){
   var p = mt5Positions[idx];

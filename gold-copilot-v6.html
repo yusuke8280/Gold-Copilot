@@ -1392,8 +1392,22 @@ function renderHistModal(){
     var isBuy = d.type === 'DEAL_TYPE_BUY';
     var pnlJpy = Math.round(parseFloat(d.profit||0));
     var pnlColor = pnlJpy >= 0 ? 'var(--green)' : 'var(--red)';
-    var dt = d.brokerTime ? new Date(d.brokerTime.replace(' ','T')+'Z') : new Date(d.time);
-    var timeStr = (d.brokerTime || d.time) ? dt.toLocaleString('ja-JP',{timeZone:'Asia/Tokyo',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}) : '--';
+    var dtRaw = d.brokerTime || d.time;
+    var timeStr;
+    if(typeof dtRaw === 'string' && dtRaw.includes(' ')){
+      var parts = dtRaw.split(' ');
+      var datePart = parts[0].slice(5).replace('-','/');
+      var timePart = parts[1].slice(0,5);
+      timeStr = datePart + ' ' + timePart;
+    } else if(dtRaw) {
+      var d2 = new Date(dtRaw);
+      timeStr = (d2.getUTCMonth()+1).toString().padStart(2,'0') + '/'
+        + d2.getUTCDate().toString().padStart(2,'0') + ' '
+        + d2.getUTCHours().toString().padStart(2,'0') + ':'
+        + d2.getUTCMinutes().toString().padStart(2,'0');
+    } else {
+      timeStr = '--';
+    }
     var badgeColor = isBuy ? 'var(--green)' : 'var(--red)';
     var badgeText = isBuy ? 'BUY' : 'SELL';
     html += '<div class="pos-item">'

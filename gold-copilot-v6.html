@@ -1392,7 +1392,8 @@ function renderHistModal(){
     var isBuy = d.type === 'DEAL_TYPE_BUY';
     var pnlJpy = Math.round(parseFloat(d.profit||0));
     var pnlColor = pnlJpy >= 0 ? 'var(--green)' : 'var(--red)';
-    var timeStr = d.time ? new Date(d.time).toLocaleString('ja-JP',{timeZone:'Asia/Tokyo',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}) : '--';
+    var dt = d.brokerTime ? new Date(d.brokerTime.replace(' ','T')+'Z') : new Date(d.time);
+    var timeStr = (d.brokerTime || d.time) ? dt.toLocaleString('ja-JP',{timeZone:'Asia/Tokyo',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}) : '--';
     var badgeColor = isBuy ? 'var(--green)' : 'var(--red)';
     var badgeText = isBuy ? 'BUY' : 'SELL';
     html += '<div class="pos-item">'

@@ -795,12 +795,11 @@ async function fetchMetaApiCandles(tf, count) {
     var data = await res.json();
     if(!Array.isArray(data) || !data.length) return null;
     return data.map(function(v){
-      // brokerTimeをEEST(UTC+3)として正しくパース
       var bt = v.brokerTime || '';
       var t;
       if(bt){
-        // タイムゾーン変換なし・ローカル時刻としてそのままパース
-        t = new Date(bt.replace(' ','T')).getTime();
+        // brokerTimeはUTCなのでZを付けてUTCとして解釈
+        t = new Date(bt.replace(' ','T')+'Z').getTime();
       } else {
         t = new Date(v.time).getTime();
       }
@@ -858,16 +857,8 @@ function buildChart(candles, lines) {
   var yAxisMin = Math.min.apply(null, allPrices) * 0.9994;
   var yAxisMax = Math.max.apply(null, allPrices) * 1.0006;
 
-  // brokerTime文字列を直接表示（タイムゾーン変換なし）
-  var labels = candles.map(function(c, i, arr){
-    if(c.bt){
-      var parts = c.bt.split(' ');
-      var datePart = parts[0].slice(5).replace('-','/');
-      var timePart = parts[1] ? parts[1].slice(0,5) : '';
-      if(currentTf==='1D'||currentTf==='1W') return datePart;
-      var prev = i > 0 && arr[i-1].bt ? arr[i-1].bt.split(' ')[0].slice(5).replace('-','/') : null;
-      return (i===0 || datePart !== prev) ? datePart+' '+timePart : timePart;
-    }
+  // c.tをJSTに変換して表示（brokerTimeはUTC→c.tはUTCms）
+  var labels = candles.map(function(c){
     var d = new Date(c.t);
     if(currentTf==='1D'||currentTf==='1W'){
       return d.toLocaleDateString('ja-JP',{month:'2-digit',day:'2-digit',timeZone:'Asia/Tokyo'});
@@ -1151,10 +1142,6 @@ async function fetchMT5Data(){
       {headers:{'auth-token':MT5_TOKEN}});
     if(r3.ok){
       var pd=await r3.json();
-      console.log('brokerTime raw:', pd.brokerTime);
-      console.log('Date.now() JST:', new Date().toLocaleString('ja-JP', {timeZone:'Asia/Tokyo'}));
-      console.log('parsed as local:', new Date(pd.brokerTime.replace(' ','T')).toLocaleString('ja-JP', {timeZone:'Asia/Tokyo'}));
-      console.log('parsed as UTC:', new Date(pd.brokerTime.replace(' ','T')+'Z').toLocaleString('ja-JP', {timeZone:'Asia/Tokyo'}));
       var bid=parseFloat(pd.bid||0);
       var ask=parseFloat(pd.ask||0);
       if(bid>0) updateLivePrice(bid);

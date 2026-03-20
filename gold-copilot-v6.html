@@ -1359,9 +1359,11 @@ async function fetchPositionHistory(){
     var data = await res.json();
     if(!Array.isArray(data)) return;
     // 決済deal（DEAL_ENTRY_OUT）のみ
-    positionHistory = data.filter(function(d){
+    var closedDeals = data.filter(function(d){
       return d.entryType === 'DEAL_ENTRY_OUT';
-    }).sort(function(a,b){ return new Date(b.time||0) - new Date(a.time||0); })
+    });
+    console.log('deals sample:', JSON.stringify(closedDeals.slice(0,3)));
+    positionHistory = closedDeals.sort(function(a,b){ return new Date(b.time||0) - new Date(a.time||0); })
       .slice(0, 20);
     document.getElementById('histCount').textContent = positionHistory.length + '件';
   } catch(e) {}

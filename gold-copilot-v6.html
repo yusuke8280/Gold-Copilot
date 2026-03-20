@@ -664,6 +664,7 @@ var MT5_ACCOUNT_ID = '';
 var OPENAI_KEY = '';
 var CLAUDE_KEY = '';
 var USD_JPY = 150;
+var brokerTimeOffset = 0; // ブローカーサーバー時刻とDate.now()の差(ms)
 var mt5Connected = false;
 var mt5Positions = [];
 var mt5Timer = null;
@@ -782,10 +783,12 @@ async function fetchMetaApiCandles(tf, count) {
   var timeframe = tfMap[tf] || '15m';
   var secMap = {'1':60,'5':300,'15':900,'60':3600,'240':14400,'1D':86400,'1W':604800};
   var sec = secMap[tf] || 900;
-  var startTime = new Date(Date.now() - sec*(count+10)*1000).toISOString();
+  // brokerTimeOffsetでブローカーサーバー時刻に合わせてstartTimeを計算
+  var brokerNow = Date.now() + brokerTimeOffset;
+  var startTime = new Date(brokerNow - sec*(count*2+10)*1000).toISOString();
   var url = 'https://mt-market-data-client-api-v1.london.agiliumtrade.ai/users/current/accounts/'
     + MT5_ACCOUNT_ID + '/historical-market-data/symbols/XAUUSDs/timeframes/'
-    + timeframe + '/candles?startTime=' + encodeURIComponent(startTime) + '&limit=' + count;
+    + timeframe + '/candles?startTime=' + encodeURIComponent(startTime) + '&limit=' + (count*2);
   try {
     var res = await fetch(url, {headers:{'auth-token':MT5_TOKEN}});
     if(!res.ok) return null;
@@ -799,7 +802,7 @@ async function fetchMetaApiCandles(tf, count) {
         t: t, bt: bt,
         o: +v.open, h: +v.high, l: +v.low, c: +v.close
       };
-    }).sort(function(a,b){return a.t-b.t;});
+    }).sort(function(a,b){return a.t-b.t;}).slice(-count); // 新しいcount件だけ使う
   } catch(e) { return null; }
 }
 
@@ -1148,6 +1151,11 @@ async function fetchMT5Data(){
       var ask=parseFloat(pd.ask||0);
       if(bid>0) updateLivePrice(bid);
       if(ask>0||bid>0) updateTradePrices(ask||bid, bid);
+      // ブローカー時刻オフセットを記録（EESTなどJSTと異なる場合の補正用）
+      if(pd.brokerTime){
+        var brokerMs = new Date(pd.brokerTime).getTime();
+        if(brokerMs > 0) brokerTimeOffset = brokerMs - Date.now();
+      }
     }
     return true;
   } catch(e){ return false; }

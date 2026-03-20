@@ -1151,6 +1151,10 @@ async function fetchMT5Data(){
       {headers:{'auth-token':MT5_TOKEN}});
     if(r3.ok){
       var pd=await r3.json();
+      console.log('brokerTime raw:', pd.brokerTime);
+      console.log('Date.now() JST:', new Date().toLocaleString('ja-JP', {timeZone:'Asia/Tokyo'}));
+      console.log('parsed as local:', new Date(pd.brokerTime.replace(' ','T')).toLocaleString('ja-JP', {timeZone:'Asia/Tokyo'}));
+      console.log('parsed as UTC:', new Date(pd.brokerTime.replace(' ','T')+'Z').toLocaleString('ja-JP', {timeZone:'Asia/Tokyo'}));
       var bid=parseFloat(pd.bid||0);
       var ask=parseFloat(pd.ask||0);
       if(bid>0) updateLivePrice(bid);

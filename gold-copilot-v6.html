@@ -506,10 +506,6 @@ canvas{display:block;width:100% !important;}
     <div class="modal-handle"></div>
     <div class="modal-title">接続設定</div>
     <div class="m-field">
-      <label>Claude API Key（AI分析用）</label>
-      <input type="password" id="claudeKey" placeholder="sk-ant-...">
-    </div>
-    <div class="m-field">
       <label>TwelveData API Key</label>
       <input type="password" id="twelveKey" placeholder="リアルタイム価格用">
     </div>
@@ -673,20 +669,11 @@ var TWELVE_KEY = '';
 var MT5_TOKEN = '';
 var MT5_ACCOUNT_ID = '';
 var OPENAI_KEY = '';
-var CLAUDE_KEY = '';
 var USD_JPY = 150;
 var brokerTimeOffset = 0; // ブローカーサーバー時刻とDate.now()の差(ms)
 var mt5Connected = false;
 var mt5Positions = [];
 var mt5Timer = null;
-var priceTimer = null;
-var wsConnection = null;
-var wsReconnectTimer = null;
-var wsUrls = [
-  'wss://mt-client-api-v1.london.agiliumtrade.ai/ws/rpc/v14',
-  'wss://mt-client-api-v1.new-york.agiliumtrade.ai/ws/rpc/v14'
-];
-var wsUrlIndex = 0;
 var lastPrice = 0;
 var chartLoadedWithMT5 = false; // MT5データでチャートを読み込み済みフラグ
 
@@ -1029,7 +1016,6 @@ function updateLivePrice(price) {
 function openSettings(){
   if(MT5_TOKEN) document.getElementById('mt5Token').value=MT5_TOKEN;
   if(MT5_ACCOUNT_ID) document.getElementById('mt5AccountId').value=MT5_ACCOUNT_ID;
-  if(CLAUDE_KEY && document.getElementById('claudeKey')) document.getElementById('claudeKey').value=CLAUDE_KEY;
   if(TWELVE_KEY) document.getElementById('twelveKey').value=TWELVE_KEY;
   document.getElementById('settingsModal').classList.add('show');
 }
@@ -1099,14 +1085,10 @@ async function connectAll(){
     updateBadge(true);
     showSettingsStatus('MT5接続成功！','ok');
     if(mt5Timer) clearInterval(mt5Timer);
-    if(priceTimer) { clearInterval(priceTimer); priceTimer = null; }
-    // ポーリングはバックアップとして30秒間隔で維持
-    mt5Timer = setInterval(fetchMT5Data, 30*1000);
+    mt5Timer = setInterval(fetchMT5Data, 10*1000);
     // USD/JPYを30分ごとに自動更新
     setInterval(fetchUSDJPY, 30*60*1000);
     fetchPositionHistory();
-    // WebSocket接続開始
-    connectWebSocket();
     setTimeout(closeSettings,1200);
   } else {
     showSettingsStatus('接続失敗。TokenとAccount IDを確認してください','err');
@@ -1115,9 +1097,6 @@ async function connectAll(){
 
 function disconnectAll(){
   if(mt5Timer){clearInterval(mt5Timer);mt5Timer=null;}
-  if(priceTimer){clearInterval(priceTimer);priceTimer=null;}
-  if(wsConnection){wsConnection.close();wsConnection=null;}
-  if(wsReconnectTimer){clearTimeout(wsReconnectTimer);wsReconnectTimer=null;}
   mt5Connected=false; mt5Positions=[];
   MT5_TOKEN=''; MT5_ACCOUNT_ID=''; TWELVE_KEY='';
   try { localStorage.removeItem('gc_twelve_key'); localStorage.removeItem('gc_mt5_token');
@@ -1136,87 +1115,6 @@ function updateBadge(connected){
   else{b.classList.remove('connected');t.textContent='設定';}
 }
 
-async function connectWebSocket() {
-  // ── URL調査モード ──
-  var testUrls = [
-    'wss://mt-client-api-v1.london.agiliumtrade.ai/ws/rpc/v14',
-    'wss://mt-client-api-v1.london.agiliumtrade.ai/ws/rpc/v1',
-    'wss://mt-client-api-v1.london.agiliumtrade.ai/ws',
-    'wss://mt-client-api-v1.london.agiliumtrade.ai'
-  ];
-  var successCount = 0;
-  console.log('=== WebSocket URL調査開始 ===');
-  testUrls.forEach(function(url) {
-    try {
-      var ws = new WebSocket(url);
-      ws.onopen = function() {
-        console.log('✅ 成功:', url);
-        successCount++;
-        ws.close();
-      };
-      ws.onerror = function() {
-        console.log('❌ 失敗:', url);
-      };
-    } catch(e) {
-      console.log('❌ 例外:', url, e.message);
-    }
-  });
-  // 全失敗フォールバック：10秒後にポーリングを5秒間隔に戻す
-  setTimeout(function() {
-    if(successCount === 0) {
-      console.log('=== 全URL失敗。ポーリング5秒にフォールバック ===');
-      if(mt5Timer) clearInterval(mt5Timer);
-      mt5Timer = setInterval(fetchMT5Data, 5000);
-    }
-  }, 10000);
-}
-
-function handleWsMessage(msg) {
-  if(!msg || !msg.type) return;
-
-  if(msg.type === 'prices' && msg.prices) {
-    msg.prices.forEach(function(p) {
-      if(p.symbol === 'XAUUSDs') {
-        var bid = parseFloat(p.bid || 0);
-        var ask = parseFloat(p.ask || 0);
-        if(bid > 0) updateLivePrice(bid);
-        if(ask > 0 || bid > 0) updateTradePrices(ask || bid, bid);
-      }
-    });
-  }
-
-  if(msg.type === 'accountInformation') {
-    var info = msg.accountInformation;
-    if(info) {
-      document.getElementById('balVal').textContent =
-        '¥' + Math.round(info.balance).toLocaleString();
-      document.getElementById('equityVal').textContent =
-        '¥' + Math.round(info.equity).toLocaleString();
-    }
-  }
-
-  if(msg.type === 'positions') {
-    mt5Positions = msg.positions || [];
-    renderPositions();
-  }
-
-  if(msg.type === 'position') {
-    var pos = msg.position;
-    var idx = mt5Positions.findIndex(function(p) {
-      return p.id === pos.id;
-    });
-    if(idx >= 0) mt5Positions[idx] = pos;
-    else mt5Positions.push(pos);
-    renderPositions();
-  }
-
-  if(msg.type === 'positionRemoved') {
-    mt5Positions = mt5Positions.filter(function(p) {
-      return p.id !== msg.positionId;
-    });
-    renderPositions();
-  }
-}
 
 async function fetchMT5Data(){
   if(!MT5_TOKEN||!MT5_ACCOUNT_ID) return false;
@@ -1551,8 +1449,9 @@ function showTPSLOnChart(idx){
 
 async function analyzeChart(){
   if(!chartData.length) return;
-  // Claude APIで本格分析
-  if(CLAUDE_KEY) { await analyzeWithClaude(); return; }
+  // Claude APIで本格分析（Cloudflare Worker経由）
+  await analyzeWithClaude();
+  return;
   // ルールベース分析（フォールバック）
   var last=chartData[chartData.length-1];
   var recent=chartData.slice(-20);
@@ -1688,13 +1587,10 @@ ${posInfo ? '- 保有ポジション: ' + posInfo : '- ポジション: なし'}
   document.getElementById('aiContent').style.display='none';
 
   try {
-    var res = await fetch('https://api.anthropic.com/v1/messages', {
+    var res = await fetch('https://gold-copilot-worker.gold-copilot.workers.dev/claude', {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': CLAUDE_KEY,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-calls': 'true'
+        'Content-Type': 'application/json'
       },
       body: JSON.stringify({
         model: 'claude-haiku-4-5-20251001',
@@ -1726,7 +1622,7 @@ ${posInfo ? '- 保有ポジション: ' + posInfo : '- ポジション: なし'}
     console.error('GPT分析エラー:', err);
     // フォールバック：ルールベース分析を使用
     document.getElementById('aiPlaceholder').querySelector('.ai-placeholder-text').textContent='分析中...';
-    OPENAI_KEY = ""; CLAUDE_KEY = ""; await analyzeChart();
+    OPENAI_KEY = ""; await analyzeChart();
   }
 }
 

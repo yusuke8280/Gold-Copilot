@@ -808,26 +808,15 @@ function buildChart(candles, lines) {
   var yAxisMin = Math.min.apply(null, allPrices) * 0.9994;
   var yAxisMax = Math.max.apply(null, allPrices) * 1.0006;
 
-  // JST表示（MT5と同じ形式：日付+時刻）
-  var labels = candles.map(function(c, i){
+  // JST統一表示（MM/DD HH:mm 形式）
+  var labels = candles.map(function(c){
     var d = new Date(c.t);
-    var opts = {timeZone:'Asia/Tokyo'};
     if(currentTf==='1D'||currentTf==='1W'){
       return d.toLocaleDateString('ja-JP',{month:'2-digit',day:'2-digit',timeZone:'Asia/Tokyo'});
     }
-    // 時間足ごとに表示形式を変える
-    var timeStr = d.toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit',timeZone:'Asia/Tokyo'});
     var dateStr = d.toLocaleDateString('ja-JP',{month:'2-digit',day:'2-digit',timeZone:'Asia/Tokyo'});
-    // 日付が変わる最初のローソク or 先頭は日付も表示
-    if(i===0){
-      return dateStr + ' ' + timeStr;
-    }
-    var prevD = new Date(candles[i-1].t);
-    var prevDate = prevD.toLocaleDateString('ja-JP',{month:'2-digit',day:'2-digit',timeZone:'Asia/Tokyo'});
-    if(dateStr !== prevDate){
-      return dateStr + ' ' + timeStr;
-    }
-    return timeStr;
+    var timeStr = d.toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit',timeZone:'Asia/Tokyo'});
+    return dateStr + ' ' + timeStr;
   });
 
   var upC='rgba(0,217,126,0.85)', dnC='rgba(255,77,106,0.85)';
@@ -1259,6 +1248,10 @@ function openPosModal(){
     html += '<div class="pos-item-cell"><div class="pos-item-label">現在値</div><div class="pos-item-value">'+(lastPrice||'---')+'</div></div>';
     html += '<div class="pos-item-cell"><div class="pos-item-label">ロット</div><div class="pos-item-value">'+(p.volume||0.01)+'lot</div></div>';
     html += '<div class="pos-item-cell"><div class="pos-item-label">スワップ</div><div class="pos-item-value">'+(p.swap||0).toFixed(0)+'</div></div>';
+    var openTimeStr = p.openTime
+      ? new Date(p.openTime).toLocaleString('ja-JP',{timeZone:'Asia/Tokyo',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})
+      : '---';
+    html += '<div class="pos-item-cell" style="grid-column:1/-1"><div class="pos-item-label">建値時刻 (JST)</div><div class="pos-item-value" style="font-size:12px;">'+openTimeStr+'</div></div>';
     html += '</div>';
 
     if(tp || sl){

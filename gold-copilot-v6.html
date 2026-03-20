@@ -1137,33 +1137,38 @@ function updateBadge(connected){
 }
 
 async function connectWebSocket() {
-  if(wsConnection) { wsConnection.onclose = null; wsConnection.onerror = null; wsConnection.close(); }
-  var url = wsUrls[wsUrlIndex];
-  console.log('WebSocket接続試行:', url);
-  wsConnection = new WebSocket(url, ['json', MT5_TOKEN]);
-  wsConnection.onopen = function() {
-    console.log('WebSocket接続成功:', url);
-    wsUrlIndex = 0; // 成功したらリセット
-    wsConnection.send(JSON.stringify({
-      type: 'subscribe',
-      accountId: MT5_ACCOUNT_ID
-    }));
-  };
-  wsConnection.onmessage = function(e) {
+  // ── URL調査モード ──
+  var testUrls = [
+    'wss://mt-client-api-v1.london.agiliumtrade.ai/ws/rpc/v14',
+    'wss://mt-client-api-v1.london.agiliumtrade.ai/ws/rpc/v1',
+    'wss://mt-client-api-v1.london.agiliumtrade.ai/ws',
+    'wss://mt-client-api-v1.london.agiliumtrade.ai'
+  ];
+  var successCount = 0;
+  console.log('=== WebSocket URL調査開始 ===');
+  testUrls.forEach(function(url) {
     try {
-      var msg = JSON.parse(e.data);
-      handleWsMessage(msg);
-    } catch(err) {}
-  };
-  wsConnection.onerror = function() {
-    console.error('WebSocketエラー:', url);
-    wsUrlIndex = (wsUrlIndex + 1) % wsUrls.length;
-  };
-  wsConnection.onclose = function() {
-    if(!mt5Connected) return;
-    console.log('WebSocket切断・5秒後に再接続');
-    wsReconnectTimer = setTimeout(connectWebSocket, 5000);
-  };
+      var ws = new WebSocket(url);
+      ws.onopen = function() {
+        console.log('✅ 成功:', url);
+        successCount++;
+        ws.close();
+      };
+      ws.onerror = function() {
+        console.log('❌ 失敗:', url);
+      };
+    } catch(e) {
+      console.log('❌ 例外:', url, e.message);
+    }
+  });
+  // 全失敗フォールバック：10秒後にポーリングを5秒間隔に戻す
+  setTimeout(function() {
+    if(successCount === 0) {
+      console.log('=== 全URL失敗。ポーリング5秒にフォールバック ===');
+      if(mt5Timer) clearInterval(mt5Timer);
+      mt5Timer = setInterval(fetchMT5Data, 5000);
+    }
+  }, 10000);
 }
 
 function handleWsMessage(msg) {

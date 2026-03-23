@@ -777,6 +777,7 @@ async function loadChart(tf) {
   buildChart(candles, overlayLines.concat(entryLines));
   updateHeaderFromCandles(candles);
   document.getElementById('chartLoading').classList.remove('show');
+  if(chartInstance && tradeMarks.length) chartInstance.update('none');
 }
 
 // ══ METAAPI CANDLES ══
@@ -983,11 +984,14 @@ function drawLineLabels(chart, lines) {
 
 // BUY/SELLマークをcanvasに直接描画
 function drawTradeMarks(chart, deals) {
-  if(!deals || !deals.length) return;
+  if(!deals || !deals.length || !chartData.length) return;
   var ctx2 = chart.ctx;
   var yScale = chart.scales.y;
   var xScale = chart.scales.x;
   if(!yScale || !xScale) return;
+
+  var chartStart = chartData[0].t;
+  var chartEnd = chartData[chartData.length-1].t;
 
   deals.forEach(function(deal) {
     var dtRaw = deal.brokerTime || deal.time;
@@ -996,6 +1000,8 @@ function drawTradeMarks(chart, deals) {
       ? new Date(dtRaw.replace(' ','T')+'Z').getTime()
       : new Date(dtRaw).getTime();
     if(isNaN(dealTime)) return;
+    // チャート表示範囲外はスキップ
+    if(dealTime < chartStart || dealTime > chartEnd) return;
 
     // 最も近いローソク足を探す
     var closestIdx = 0, minDiff = Infinity;

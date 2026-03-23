@@ -318,10 +318,29 @@ canvas{display:block;width:100% !important;}
 .loading-text{font-size:10px;color:var(--gold);letter-spacing:3px;}
 
 /* ── RSI METER ── */
-.rsi-meter{
-  position:absolute;top:8px;right:8px;z-index:10;
-  background:rgba(8,12,18,0.88);border:1px solid var(--border);
-  border-radius:10px;padding:4px 4px 0;pointer-events:none;
+.rsi-gauge{
+  position:absolute;top:8px;left:8px;z-index:10;
+  background:rgba(8,12,18,0.82);border:1px solid var(--border);
+  border-radius:8px;padding:5px 8px;pointer-events:none;width:130px;
+}
+.rsi-gauge-label{
+  font-size:11px;font-weight:700;font-family:'Space Mono',monospace;
+  color:#e8f0ff;letter-spacing:1px;margin-bottom:3px;
+}
+.rsi-gauge-bar{
+  position:relative;height:10px;border-radius:5px;overflow:hidden;
+  background:linear-gradient(to right,#ff4d6a 0%,#ff4d6a 30%,#2a3d55 30%,#2a3d55 70%,#00d97e 70%,#00d97e 100%);
+}
+.rsi-gauge-indicator{
+  position:absolute;top:-2px;width:3px;height:14px;
+  background:#e8f0ff;border-radius:2px;transform:translateX(-50%);
+  box-shadow:0 0 4px rgba(232,240,255,0.8);
+  transition:left 0.4s ease;
+}
+.rsi-gauge-sub{
+  display:flex;justify-content:space-between;
+  font-size:8px;color:var(--muted);margin-top:3px;
+  font-family:'Space Mono',monospace;
 }
 
 /* ── TRADE PANEL ── */
@@ -459,38 +478,15 @@ canvas{display:block;width:100% !important;}
     </div>
     <div class="loading-text">LOADING...</div>
   </div>
-  <!-- RSI メーター -->
-  <div class="rsi-meter" id="rsiMeter">
-    <svg width="120" height="74" viewBox="0 0 120 74">
-      <!-- 背景トラック（半円全体） -->
-      <path d="M 14,62 A 46,46 0 0,0 106,62" fill="none" stroke="#141e2e" stroke-width="14" stroke-linecap="butt"/>
-      <!-- 赤ゾーン 0-30（43.35 / 144.51px） -->
-      <path d="M 14,62 A 46,46 0 0,0 106,62" fill="none" stroke="#ff4d6a" stroke-width="11"
-        stroke-linecap="butt" stroke-dasharray="43.35 101.16"/>
-      <!-- グレーゾーン 30-70 -->
-      <path d="M 14,62 A 46,46 0 0,0 106,62" fill="none" stroke="#2a3d55" stroke-width="11"
-        stroke-linecap="butt" stroke-dasharray="57.81 86.70" stroke-dashoffset="-43.35"/>
-      <!-- 緑ゾーン 70-100 -->
-      <path d="M 14,62 A 46,46 0 0,0 106,62" fill="none" stroke="#00d97e" stroke-width="11"
-        stroke-linecap="butt" stroke-dasharray="43.35 101.16" stroke-dashoffset="-101.16"/>
-      <!-- RSI=30 マーカードット -->
-      <circle cx="32.96" cy="24.79" r="2.5" fill="#080c12"/>
-      <!-- RSI=70 マーカードット -->
-      <circle cx="87.04" cy="24.79" r="2.5" fill="#080c12"/>
-      <!-- 30 / 70 ラベル -->
-      <text x="24" y="46" text-anchor="middle" font-family="Space Mono,monospace" font-size="7" fill="#4a6080">30</text>
-      <text x="96" y="46" text-anchor="middle" font-family="Space Mono,monospace" font-size="7" fill="#4a6080">70</text>
-      <!-- ニードル（デフォルトRSI=50、真上向き） -->
-      <line id="rsiNeedle" x1="60" y1="62" x2="60" y2="30" stroke="#e8f0ff" stroke-width="2" stroke-linecap="round"/>
-      <!-- 中心ハブ -->
-      <circle cx="60" cy="62" r="4" fill="#f0b429" stroke="#080c12" stroke-width="1.5"/>
-      <!-- RSI数値（大きく中央） -->
-      <text id="rsiValueText" x="60" y="53" text-anchor="middle"
-        font-family="Space Mono,monospace" font-size="17" font-weight="700" fill="#e8f0ff">--</text>
-      <!-- RSI 14 ラベル -->
-      <text x="60" y="72" text-anchor="middle" font-family="Space Mono,monospace" font-size="7"
-        fill="#4a6080" letter-spacing="1">RSI 14</text>
-    </svg>
+  <!-- RSI ゲージ -->
+  <div class="rsi-gauge" id="rsiGauge">
+    <div class="rsi-gauge-label" id="rsiGaugeLabel">RSI --</div>
+    <div class="rsi-gauge-bar">
+      <div class="rsi-gauge-indicator" id="rsiGaugeIndicator" style="left:50%;"></div>
+    </div>
+    <div class="rsi-gauge-sub">
+      <span>売られすぎ</span><span>中立</span><span>買われすぎ</span>
+    </div>
   </div>
 </div>
 
@@ -952,7 +948,7 @@ function buildChart(candles, lines) {
 
   // RSIメーター更新
   var _closes = candles.map(function(c){ return c.c; });
-  updateRsiMeter(calcRSI(_closes, 14));
+  updateRsiGauge(calcRSI(_closes, 14));
 }
 
 // ラインラベルをcanvasに直接描画
@@ -2114,35 +2110,24 @@ function calcRSI(closes, period) {
   return Math.round(100 - 100 / (1 + rs));
 }
 
-function updateRsiMeter(rsi) {
-  var valEl  = document.getElementById('rsiValueText');
-  var needle = document.getElementById('rsiNeedle');
-  if(!valEl || !needle) return;
+function updateRsiGauge(rsi) {
+  var labelEl = document.getElementById('rsiGaugeLabel');
+  var indEl   = document.getElementById('rsiGaugeIndicator');
+  if(!labelEl || !indEl) return;
 
   if(rsi === null || rsi === undefined){
-    valEl.textContent = '--';
-    valEl.setAttribute('fill', '#e8f0ff');
-    needle.setAttribute('x2', '60');
-    needle.setAttribute('y2', '30');
-    needle.setAttribute('stroke', '#e8f0ff');
+    labelEl.textContent = 'RSI --';
+    labelEl.style.color = '#e8f0ff';
+    indEl.style.left = '50%';
+    indEl.style.background = '#e8f0ff';
     return;
   }
 
-  valEl.textContent = rsi;
-
-  // 色: 過売り=赤、中立=白、過買い=緑
   var color = rsi <= 30 ? '#ff4d6a' : rsi >= 70 ? '#00d97e' : '#e8f0ff';
-  valEl.setAttribute('fill', color);
-  needle.setAttribute('stroke', color);
-
-  // ニードル角度: RSI=0→180°(左端), RSI=100→0°(右端)
-  // cx=60, cy=62, 半径=36
-  var angleDeg = 180 - rsi * 1.8; // = 180 * (1 - rsi/100)
-  var angleRad = angleDeg * Math.PI / 180;
-  var x2 = (60 + 36 * Math.cos(angleRad)).toFixed(1);
-  var y2 = (62 - 36 * Math.sin(angleRad)).toFixed(1);
-  needle.setAttribute('x2', x2);
-  needle.setAttribute('y2', y2);
+  labelEl.textContent = 'RSI ' + rsi;
+  labelEl.style.color = color;
+  indEl.style.left = rsi + '%';
+  indEl.style.background = color;
 }
 
 function fitYAxis(minIdx,maxIdx){

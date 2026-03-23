@@ -857,8 +857,8 @@ function buildChart(candles, lines) {
   var closes = candles.map(function(c){return c.c;});
 
   // Y軸範囲をローソク足+ラインを含めて計算
-  var allPrices = lows.concat(highs);
-  lines.forEach(function(l){ if(l.price > 0) allPrices.push(l.price); });
+  var allPrices = lows.concat(highs).filter(function(v){ return v > 0 && !isNaN(v); });
+  lines.forEach(function(l){ if(l.price > 100) allPrices.push(l.price); });
   var yAxisMin = Math.min.apply(null, allPrices) * 0.9994;
   var yAxisMax = Math.max.apply(null, allPrices) * 1.0006;
 
@@ -1449,6 +1449,8 @@ function showTPSLOnChart(idx){
 
 async function analyzeChart(){
   if(!chartData.length) return;
+  // 最新データを取得してから分析
+  await loadChart(currentTf);
   // Claude APIで本格分析（Cloudflare Worker経由）
   await analyzeWithClaude();
   return;
@@ -1642,7 +1644,7 @@ function renderAI(r){
     +'</div>';
   // インジケーター
   html+='<div class="ind-grid">'
-    +'<div class="ind-card"><div class="ind-label">RSI</div><div class="ind-value" style="color:'+riskColor+'">'+r.rsi+'</div><div class="ind-sub">'+r.rsiSig+'</div></div>'
+    +'<div class="ind-card"><div class="ind-label">RSI</div><div class="ind-value" style="color:'+riskColor+'">'+r.rsi+'</div><div class="ind-sub">'+(r.rsiSig||(r.rsi>70?'過買い':r.rsi<30?'過売り':'中立'))+'</div></div>'
     +'<div class="ind-card"><div class="ind-label">MA20</div><div class="ind-value">'+r.ma20+'</div><div class="ind-sub">移動平均</div></div>'
     +'</div>';
   // ライン

@@ -671,6 +671,7 @@ var mt5Connected = false;
 var mt5Positions = [];
 var mt5Timer = null;
 var lastPrice = 0;
+var tradeMarks = [];
 var chartLoadedWithMT5 = false; // MT5データでチャートを読み込み済みフラグ
 
 // ══ INIT ══
@@ -944,6 +945,7 @@ function buildChart(candles, lines) {
   chartInstance.draw = function() {
     originalDraw();
     drawLineLabels(chartInstance, lines);
+    drawTradeMarks(chartInstance, tradeMarks);
   };
 
   // RSIメーター更新
@@ -975,6 +977,56 @@ function drawLineLabels(chart, lines) {
     // テキスト
     ctx2.fillStyle = l.color;
     ctx2.fillText(text, xScale.left + 8, yPos - 2);
+    ctx2.restore();
+  });
+}
+
+// BUY/SELLマークをcanvasに直接描画
+function drawTradeMarks(chart, deals) {
+  if(!deals || !deals.length) return;
+  var ctx2 = chart.ctx;
+  var yScale = chart.scales.y;
+  var xScale = chart.scales.x;
+  if(!yScale || !xScale) return;
+
+  deals.forEach(function(deal) {
+    var dtRaw = deal.brokerTime || deal.time;
+    if(!dtRaw) return;
+    var dealTime = typeof dtRaw === 'string' && dtRaw.includes(' ')
+      ? new Date(dtRaw.replace(' ','T')+'Z').getTime()
+      : new Date(dtRaw).getTime();
+    if(isNaN(dealTime)) return;
+
+    // 最も近いローソク足を探す
+    var closestIdx = 0, minDiff = Infinity;
+    chartData.forEach(function(c, i) {
+      var diff = Math.abs(c.t - dealTime);
+      if(diff < minDiff) { minDiff = diff; closestIdx = i; }
+    });
+
+    var xPos = xScale.getPixelForValue(closestIdx);
+    if(xPos < xScale.left || xPos > xScale.right) return;
+
+    var isBuy = deal.type === 'DEAL_TYPE_BUY';
+    var price = parseFloat(deal.price || 0);
+    if(price <= 0) return;
+    var yPos = yScale.getPixelForValue(price);
+
+    ctx2.save();
+    ctx2.font = 'bold 12px Space Mono, monospace';
+    ctx2.textAlign = 'center';
+
+    if(isBuy) {
+      ctx2.fillStyle = '#00d97e';
+      ctx2.fillText('▲', xPos, yPos + 18);
+      ctx2.font = '8px Space Mono, monospace';
+      ctx2.fillText(price.toFixed(0), xPos, yPos + 28);
+    } else {
+      ctx2.fillStyle = '#ff4d6a';
+      ctx2.fillText('▽', xPos, yPos - 8);
+      ctx2.font = '8px Space Mono, monospace';
+      ctx2.fillText(price.toFixed(0), xPos, yPos - 18);
+    }
     ctx2.restore();
   });
 }
@@ -1352,6 +1404,8 @@ async function fetchPositionHistory(){
     positionHistory = closedDeals.sort(function(a,b){ return new Date(b.time||0) - new Date(a.time||0); })
       .slice(0, 20);
     document.getElementById('histCount').textContent = positionHistory.length + '件';
+    tradeMarks = closedDeals;
+    if(chartInstance) chartInstance.update('none');
   } catch(e) {}
 }
 

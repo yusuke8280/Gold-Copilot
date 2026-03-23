@@ -752,7 +752,7 @@ function initChartSize() {
 // ══ LOAD CHART ══
 async function loadChart(tf) {
   document.getElementById('chartLoading').classList.add('show');
-  var count = tf==='1'?80:tf==='5'?80:tf==='15'?60:tf==='60'?50:tf==='240'?40:30;
+  var count = tf==='1'?120:tf==='5'?120:tf==='15'?200:tf==='60'?168:tf==='240'?120:60;
   var candles = null;
   var source = 'DEMO';
 
@@ -788,10 +788,10 @@ async function fetchMetaApiCandles(tf, count) {
   var sec = secMap[tf] || 900;
   // brokerTimeOffsetでブローカーサーバー時刻に合わせてstartTimeを計算
   var brokerNow = Date.now() + brokerTimeOffset;
-  var startTime = new Date(brokerNow - sec*(count*2+10)*1000).toISOString();
+  var startTime = new Date(brokerNow - sec*(count*3+10)*1000).toISOString();
   var url = 'https://mt-market-data-client-api-v1.london.agiliumtrade.ai/users/current/accounts/'
     + MT5_ACCOUNT_ID + '/historical-market-data/symbols/XAUUSDs/timeframes/'
-    + timeframe + '/candles?startTime=' + encodeURIComponent(startTime) + '&limit=' + (count*2);
+    + timeframe + '/candles?startTime=' + encodeURIComponent(startTime) + '&limit=' + (count*3);
   try {
     var res = await fetch(url, {headers:{'auth-token':MT5_TOKEN}});
     if(!res.ok) return null;

@@ -1716,6 +1716,18 @@ function renderAI(r){
     +'</div>';
   // S/Rライン
   html+='<div class="lines-card"><div class="lines-title">S/R ライン</div>'+srItems+'</div>';
+  // エントリー根拠
+  if(r.reason) {
+    var reasons = Array.isArray(r.reason) ? r.reason : r.reason.split('\n').filter(Boolean);
+    var reasonHtml = '<div class="analysis-card" style="margin-bottom:12px;">';
+    reasonHtml += '<div class="analysis-head">エントリー根拠</div>';
+    reasons.forEach(function(re, i) {
+      reasonHtml += '<div style="font-size:13px;color:#a0b8d0;padding:4px 0;border-bottom:1px solid var(--border);">'
+        + (i+1) + '. ' + re + '</div>';
+    });
+    reasonHtml += '</div>';
+    html += reasonHtml;
+  }
   // エントリー
   html+='<div class="entry-card">'
     +entryRow('エントリー',r.entry,'')

@@ -1581,61 +1581,42 @@ async function analyzeWithClaude(){
   var highs = recent.map(function(c){return c.h;});
   var lows = recent.map(function(c){return c.l;});
 
-  // RSI計算
-  var gains=0,losses=0;
-  for(var i=1;i<closes.length;i++){
-    var d=closes[i]-closes[i-1];
-    if(d>0)gains+=d;else losses-=d;
-  }
-  var rsi=losses===0?100:Math.round(100-100/(1+(gains/losses)));
-  var ma20=closes.slice(-20).reduce(function(a,b){return a+b;},0)/20;
-  var ma50=closes.reduce(function(a,b){return a+b;},0)/closes.length;
-  var maxH=Math.max.apply(null,highs.slice(-20));
-  var minL=Math.min.apply(null,lows.slice(-20));
+  var currentRsi = calcRSI(closes, 14);
+  var ma20 = closes.slice(-20).reduce(function(a,b){return a+b;},0)/20;
+  var ma50 = closes.reduce(function(a,b){return a+b;},0)/closes.length;
+  var recentHigh = Math.max.apply(null, highs.slice(-20));
+  var recentLow  = Math.min.apply(null, lows.slice(-20));
+  var recentCandles = chartData.slice(-20).map(function(c){
+    return {o:c.o, h:c.h, l:c.l, c:c.c};
+  });
 
-  // ポジション情報
-  var posInfo = '';
-  if(mt5Positions.length > 0) {
-    mt5Positions.forEach(function(p){
-      var isBuy = (p.type||'').toLowerCase().includes('buy');
-      var profitRaw = p.unrealizedProfit || p.profit || 0;
-      var rate = p.accountCurrencyExchangeRate || 1;
-      var pnlJPY = Math.round(profitRaw * rate * USD_JPY);
-      posInfo += (isBuy?'BUY':'SELL') + ' ' + p.openPrice + ' (' + (pnlJPY>=0?'+':'') + '¥' + Math.abs(pnlJPY).toLocaleString() + ') ';
-    });
-  }
+  var prompt = `あなたはプロのゴールド（XAU/USD）トレーダーです。
+以下のチャートデータを分析して、初心者にもわかりやすく日本語で回答してください。
 
-  var prompt = `あなたはゴールド（XAU/USD）専門のプロトレーダーです。ダウ理論・テクニカル分析・リスク管理のエキスパートです。以下のデータを分析して日本語でトレード判断を提供してください。
-
-【現在の市場データ】
-- 現在価格: ${last.c}
+【チャートデータ】
 - 時間足: ${currentTf}分足
-- RSI(14): ${rsi}
+- 現在価格: ${lastPrice}
+- RSI(14): ${currentRsi}
 - MA20: ${ma20.toFixed(2)}
 - MA50: ${ma50.toFixed(2)}
-- 直近高値: ${maxH}
-- 直近安値: ${minL}
-- 直近20本の終値: ${closes.slice(-5).join(', ')}
-${posInfo ? '- 保有ポジション: ' + posInfo : '- ポジション: なし'}
+- 直近高値: ${recentHigh}
+- 直近安値: ${recentLow}
+- ローソク足データ(直近20本): ${JSON.stringify(recentCandles)}
 
-以下の形式でJSONのみ返してください（他のテキスト不要）：
+【分析指示】
+以下のJSON形式のみで回答してください。他のテキストは不要です：
 {
   "signal": "BUY" または "SELL" または "WAIT",
   "strength": "強" または "中" または "弱",
-  "trend": "トレンドの説明（20文字以内）",
+  "reason": "エントリー根拠を3つ箇条書きで（各20文字以内）",
   "entry": 数値,
   "tp": 数値,
   "sl": 数値,
-  "r1": 数値,
-  "r2": 数値,
-  "s1": 数値,
-  "s2": 数値,
-  "chUp": 数値,
-  "chLo": 数値,
-  "analysis": "ダウ理論に基づく詳細分析（100文字程度）",
-  "action": "具体的な対応策（80文字程度）",
-  "risk": "リスク要因（60文字程度）",
-  "rsi": ${rsi},
+  "rr": "リスクリワード比（例：1:2.5）",
+  "sr": [{"label":"R1","price":数値},{"label":"S1","price":数値}],
+  "analysis": "初心者向けの解説（100文字以内）",
+  "warning": "注意点（50文字以内）",
+  "rsi": ${currentRsi},
   "ma20": ${ma20.toFixed(2)}
 }`;
 
@@ -1665,15 +1646,22 @@ ${posInfo ? '- 保有ポジション: ' + posInfo : '- ポジション: なし'}
     if(!jsonMatch) throw new Error('JSON parse error');
     var r = JSON.parse(jsonMatch[0]);
     analysisResult = r;
-    // S/Rラインをチャートに反映
-    overlayLines=[
-      {price:r.r1,color:'#ff4d6a',label:'R1',width:1.5,dash:[4,3]},
-      {price:r.r2,color:'#ff8099',label:'R2',width:1,dash:[4,3]},
-      {price:r.s1,color:'#00d97e',label:'S1',width:1.5,dash:[4,3]},
-      {price:r.s2,color:'#66ffbb',label:'S2',width:1,dash:[4,3]},
-      {price:r.chUp,color:'#f0b429',label:'CH↑',width:1,dash:[6,3]},
-      {price:r.chLo,color:'#f0b429',label:'CH↓',width:1,dash:[6,3]},
-    ].filter(function(l){ return l.price > 3000 && l.price < 10000; });
+    // S/Rラインをチャートに反映（sr配列形式 or 旧形式に対応）
+    var srLines = [];
+    if(Array.isArray(r.sr)) {
+      var srColorMap = {R1:'#ff4d6a',R2:'#ff8099',S1:'#00d97e',S2:'#66ffbb'};
+      r.sr.forEach(function(s){
+        var col = srColorMap[s.label] || '#f0b429';
+        srLines.push({price:s.price, color:col, label:s.label, width:1.5, dash:[4,3]});
+      });
+    } else {
+      // 旧形式フォールバック
+      if(r.r1) srLines.push({price:r.r1,color:'#ff4d6a',label:'R1',width:1.5,dash:[4,3]});
+      if(r.r2) srLines.push({price:r.r2,color:'#ff8099',label:'R2',width:1,dash:[4,3]});
+      if(r.s1) srLines.push({price:r.s1,color:'#00d97e',label:'S1',width:1.5,dash:[4,3]});
+      if(r.s2) srLines.push({price:r.s2,color:'#66ffbb',label:'S2',width:1,dash:[4,3]});
+    }
+    overlayLines = srLines.filter(function(l){ return l.price > 3000 && l.price < 10000; });
     buildChart(chartData,overlayLines.concat(entryLines));
     renderAI(r);
   } catch(err) {
@@ -1691,11 +1679,34 @@ function renderAI(r){
   var sigColor=isBuy?'var(--green)':isSell?'var(--red)':'var(--gold)';
   var riskColor=r.rsi>65||r.rsi<35?'var(--red)':'var(--gold)';
 
+  // reason: 新形式は文字列、旧形式はtrendを使用
+  var trendText = r.trend || (typeof r.reason === 'string' ? r.reason.split('\n')[0] : '');
+  // RR比: 新形式はr.rr文字列、旧形式は計算
+  var rrText = r.rr || ('1:' + (Math.abs(r.tp-r.entry)/Math.abs(r.sl-r.entry)||0).toFixed(1));
+  // S/Rライン: 新形式はr.sr配列、旧形式はr.r1/r2/s1/s2
+  var srColorMap = {R1:['rgba(255,77,106,0.15)','#ff4d6a'],R2:['rgba(255,128,153,0.15)','#ff8099'],
+                   S1:['rgba(0,217,126,0.15)','#00d97e'],S2:['rgba(102,255,187,0.1)','#66ffbb']};
+  var srItems = '';
+  if(Array.isArray(r.sr)) {
+    r.sr.forEach(function(s){
+      var c = srColorMap[s.label]||['rgba(240,180,41,0.1)','#f0b429'];
+      srItems += lineItem(s.label, s.price, c[0], c[1]);
+    });
+  } else {
+    if(r.r2) srItems += lineItem('R2',r.r2,'rgba(255,128,153,0.15)','#ff8099');
+    if(r.r1) srItems += lineItem('R1',r.r1,'rgba(255,77,106,0.15)','#ff4d6a');
+    if(r.s1) srItems += lineItem('S1',r.s1,'rgba(0,217,126,0.15)','#00d97e');
+    if(r.s2) srItems += lineItem('S2',r.s2,'rgba(102,255,187,0.1)','#66ffbb');
+  }
+  // warning: 新形式はr.warning、旧形式はr.risk
+  var warningText = r.warning || r.risk || '';
+  var actionText = r.action || '';
+
   var html='';
   // シグナル
   html+='<div class="signal-card" style="background:'+sigBg+';border:1px solid '+sigBorder+';">'
     +'<div><div class="signal-main" style="color:'+sigColor+'">'+r.signal+'</div>'
-    +'<div class="signal-sub">'+r.trend+' | RSI '+r.rsi+'</div></div>'
+    +'<div class="signal-sub">'+trendText+' | RSI '+r.rsi+'</div></div>'
     +'<span class="signal-strength" style="background:'+sigBg+';border:1px solid '+sigBorder+';color:'+sigColor+'">'+r.strength+'</span>'
     +'</div>';
   // インジケーター
@@ -1703,24 +1714,19 @@ function renderAI(r){
     +'<div class="ind-card"><div class="ind-label">RSI</div><div class="ind-value" style="color:'+riskColor+'">'+r.rsi+'</div><div class="ind-sub">'+(r.rsiSig||(r.rsi>70?'過買い':r.rsi<30?'過売り':'中立'))+'</div></div>'
     +'<div class="ind-card"><div class="ind-label">MA20</div><div class="ind-value">'+r.ma20+'</div><div class="ind-sub">移動平均</div></div>'
     +'</div>';
-  // ライン
-  html+='<div class="lines-card"><div class="lines-title">S/R ライン</div>'
-    +lineItem('R2',r.r2,'rgba(255,128,153,0.15)','#ff8099')
-    +lineItem('R1',r.r1,'rgba(255,77,106,0.15)','#ff4d6a')
-    +lineItem('S1',r.s1,'rgba(0,217,126,0.15)','#00d97e')
-    +lineItem('S2',r.s2,'rgba(102,255,187,0.1)','#66ffbb')
-    +'</div>';
+  // S/Rライン
+  html+='<div class="lines-card"><div class="lines-title">S/R ライン</div>'+srItems+'</div>';
   // エントリー
   html+='<div class="entry-card">'
     +entryRow('エントリー',r.entry,'')
     +entryRow('TP（利確）',r.tp,'color:var(--green)')
     +entryRow('SL（損切）',r.sl,'color:var(--red)')
-    +entryRow('RR比','1:'+(Math.abs(r.tp-r.entry)/Math.abs(r.sl-r.entry)).toFixed(1),'')
+    +entryRow('RR比',rrText,'')
     +'</div>';
   // 分析テキスト
-  html+='<div class="analysis-card"><div class="analysis-head">◈ ダウ理論分析</div><div class="analysis-text">'+r.analysis+'</div></div>'
-    +'<div class="analysis-card"><div class="analysis-head">▶ 対応策</div><div class="analysis-text">'+r.action+'</div></div>'
-    +'<div class="analysis-card" style="border-color:'+riskColor+'"><div class="analysis-head" style="color:'+riskColor+'">⚠ リスク</div><div class="analysis-text">'+r.risk+'</div></div>';
+  html+='<div class="analysis-card"><div class="analysis-head">◈ 分析</div><div class="analysis-text">'+r.analysis+'</div></div>';
+  if(actionText) html+='<div class="analysis-card"><div class="analysis-head">▶ 対応策</div><div class="analysis-text">'+actionText+'</div></div>';
+  if(warningText) html+='<div class="analysis-card" style="border-color:'+riskColor+'"><div class="analysis-head" style="color:'+riskColor+'">⚠ 注意</div><div class="analysis-text">'+warningText+'</div></div>';
 
   document.getElementById('aiPlaceholder').style.display='none';
   var ac=document.getElementById('aiContent');

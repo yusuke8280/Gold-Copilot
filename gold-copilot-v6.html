@@ -506,6 +506,10 @@ canvas{display:block;width:100% !important;}
       <input type="password" id="twelveKey" placeholder="リアルタイム価格用">
     </div>
     <div class="m-field">
+      <label>Finnhub API Key（リアルタイム価格用）</label>
+      <input type="password" id="finnhubKey" placeholder="Finnhub APIキー">
+    </div>
+    <div class="m-field">
       <label>MetaApi Token</label>
       <input type="password" id="mt5Token" placeholder="MT5連動用">
     </div>
@@ -662,6 +666,7 @@ var overlayLines = [];
 var entryLines = [];
 var analysisResult = null;
 var TWELVE_KEY = '';
+var FINNHUB_KEY = '';
 var MT5_TOKEN = '';
 var MT5_ACCOUNT_ID = '';
 var OPENAI_KEY = '';
@@ -684,15 +689,18 @@ window.addEventListener('DOMContentLoaded', function(){
   // localStorageから設定を復元して自動接続
   try {
     var savedTwelve  = localStorage.getItem('gc_twelve_key') || '';
+    var savedFinnhub = localStorage.getItem('gc_finnhub_key') || '';
     var savedToken   = localStorage.getItem('gc_mt5_token') || '';
     var savedAccount = localStorage.getItem('gc_mt5_account') || '';
     var savedInterval = parseInt(localStorage.getItem('gc_interval')) || 10;
-    if(savedTwelve || savedToken) {
+    if(savedTwelve || savedFinnhub || savedToken) {
       document.getElementById('twelveKey').value    = savedTwelve;
+      document.getElementById('finnhubKey').value   = savedFinnhub;
       document.getElementById('mt5Token').value     = savedToken;
       document.getElementById('mt5AccountId').value = savedAccount;
       document.getElementById('updateInterval').value = savedInterval;
       TWELVE_KEY     = savedTwelve;
+      FINNHUB_KEY    = savedFinnhub;
       MT5_TOKEN      = savedToken;
       MT5_ACCOUNT_ID = savedAccount;
       // バランスバーは接続完了後に表示（一瞬表示を防ぐ）
@@ -1102,7 +1110,8 @@ async function fetchUSDJPY() {
 }
 
 async function connectAll(){
-  TWELVE_KEY = document.getElementById('twelveKey').value.trim();
+  TWELVE_KEY  = document.getElementById('twelveKey').value.trim();
+  FINNHUB_KEY = document.getElementById('finnhubKey').value.trim();
   MT5_TOKEN = document.getElementById('mt5Token').value.trim();
   MT5_ACCOUNT_ID = document.getElementById('mt5AccountId').value.trim();
   USD_JPY = parseFloat(document.getElementById('usdJpy').value)||150;
@@ -1111,10 +1120,10 @@ async function connectAll(){
   // localStorageに保存（リロード後も維持）
   try {
     localStorage.setItem('gc_twelve_key', TWELVE_KEY);
+    localStorage.setItem('gc_finnhub_key', FINNHUB_KEY);
     localStorage.setItem('gc_mt5_token', MT5_TOKEN);
     localStorage.setItem('gc_mt5_account', MT5_ACCOUNT_ID);
     localStorage.setItem('gc_interval', interval);
-
   } catch(e) {}
 
   // TwelveKeyがあればUSD/JPYを自動取得
@@ -1126,7 +1135,7 @@ async function connectAll(){
   if(TWELVE_KEY && !MT5_TOKEN){
     showSettingsStatus('TwelveDataに接続中...','info');
     await loadChart(currentTf);
-    connectTwelveDataWS();
+    connectFinnhubWS();
     showSettingsStatus('リアルタイム価格を有効化しました','ok');
     setTimeout(closeSettings,1200);
     return;
@@ -1147,32 +1156,29 @@ async function connectAll(){
     // USD/JPYを30分ごとに自動更新
     setInterval(fetchUSDJPY, 30*60*1000);
     fetchPositionHistory();
-    connectTwelveDataWS();
+    connectFinnhubWS();
     setTimeout(closeSettings,1200);
   } else {
     showSettingsStatus('接続失敗。TokenとAccount IDを確認してください','err');
   }
 }
 
-function connectTwelveDataWS() {
-  if(!TWELVE_KEY) return;
-  if(tdWs) tdWs.close();
+function connectFinnhubWS() {
+  if(!FINNHUB_KEY) return;
+  if(tdWs) { tdWs.onclose = null; tdWs.close(); }
 
-  tdWs = new WebSocket('wss://ws.twelvedata.com/v1/quotes/price?apikey=' + TWELVE_KEY);
+  tdWs = new WebSocket('wss://ws.finnhub.io?token=' + FINNHUB_KEY);
 
   tdWs.onopen = function() {
     tdWsConnected = true;
-    console.log('TwelveData WS接続成功');
-    tdWs.send(JSON.stringify({
-      action: 'subscribe',
-      params: { symbols: 'XAU/USD' }
-    }));
+    console.log('Finnhub WS接続成功');
+    tdWs.send(JSON.stringify({type: 'subscribe', symbol: 'OANDA:XAU_USD'}));
   };
 
   tdWs.onmessage = function(e) {
     var msg = JSON.parse(e.data);
-    if(msg.event === 'price' && msg.symbol === 'XAU/USD') {
-      var price = parseFloat(msg.price);
+    if(msg.type === 'trade' && msg.data && msg.data.length) {
+      var price = parseFloat(msg.data[msg.data.length-1].p);
       if(price > 0) {
         updateLivePrice(price);
         updateTradePrices(price + 0.2, price);
@@ -1183,13 +1189,13 @@ function connectTwelveDataWS() {
 
   tdWs.onclose = function() {
     tdWsConnected = false;
-    console.log('TwelveData WS切断・5秒後再接続');
-    setTimeout(connectTwelveDataWS, 5000);
+    if(mt5Connected) {
+      console.log('Finnhub WS切断・5秒後再接続');
+      setTimeout(connectFinnhubWS, 5000);
+    }
   };
 
-  tdWs.onerror = function() {
-    tdWsConnected = false;
-  };
+  tdWs.onerror = function() { tdWsConnected = false; };
 }
 
 function updateCurrentCandle(price) {
@@ -1219,9 +1225,9 @@ function disconnectAll(){
   if(mt5Timer){clearInterval(mt5Timer);mt5Timer=null;}
   if(tdWs){ tdWs.close(); tdWs=null; tdWsConnected=false; }
   mt5Connected=false; mt5Positions=[];
-  MT5_TOKEN=''; MT5_ACCOUNT_ID=''; TWELVE_KEY='';
-  try { localStorage.removeItem('gc_twelve_key'); localStorage.removeItem('gc_mt5_token');
-        localStorage.removeItem('gc_mt5_account'); } catch(e) {}
+  MT5_TOKEN=''; MT5_ACCOUNT_ID=''; TWELVE_KEY=''; FINNHUB_KEY='';
+  try { localStorage.removeItem('gc_twelve_key'); localStorage.removeItem('gc_finnhub_key');
+        localStorage.removeItem('gc_mt5_token'); localStorage.removeItem('gc_mt5_account'); } catch(e) {}
   updateBadge(false);
   document.getElementById('balanceBar').classList.remove('show');
   document.getElementById('tfBar').classList.remove('with-balance');

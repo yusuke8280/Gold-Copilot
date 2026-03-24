@@ -1173,10 +1173,12 @@ function connectFinnhubWS() {
     tdWsConnected = true;
     console.log('Finnhub WS接続成功');
     tdWs.send(JSON.stringify({type: 'subscribe', symbol: 'OANDA:XAU_USD'}));
+    tdWs.send(JSON.stringify({type: 'subscribe', symbol: 'FXCM:XAUUSD'}));
   };
 
   tdWs.onmessage = function(e) {
     var msg = JSON.parse(e.data);
+    console.log('Finnhub受信:', JSON.stringify(msg).slice(0,100));
     if(msg.type === 'trade' && msg.data && msg.data.length) {
       var price = parseFloat(msg.data[msg.data.length-1].p);
       if(price > 0) {
@@ -1200,8 +1202,13 @@ function connectFinnhubWS() {
 
 function updateCurrentCandle(price) {
   if(!chartData.length || !chartInstance) return;
+  if(!price || price < 1000 || price > 10000) return; // 異常値チェック
 
   var last = chartData[chartData.length - 1];
+
+  // 価格変動が大きすぎる場合は無視（スパイク防止）
+  if(lastPrice > 0 && Math.abs(price - lastPrice) > 50) return;
+
   last.c = price;
   if(price > last.h) last.h = price;
   if(price < last.l) last.l = price;

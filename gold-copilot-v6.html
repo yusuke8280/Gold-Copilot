@@ -1246,12 +1246,13 @@ function updateCurrentCandle(price) {
         ds0.backgroundColor.push('rgba(0,217,126,0.85)');
         ds0.borderColor.push('rgba(0,217,126,0.85)');
       }
-      chartInstance.data.labels.push(
-        new Date(candleStart + 9*3600000).toLocaleString('ja-JP',{
-          month:'2-digit',day:'2-digit',
-          hour:'2-digit',minute:'2-digit',timeZone:'Asia/Tokyo'
-        })
-      );
+      var d = new Date(candleStart);
+      var label =
+        (d.getUTCMonth()+1).toString().padStart(2,'0') + '/' +
+        d.getUTCDate().toString().padStart(2,'0') + ' ' +
+        d.getUTCHours().toString().padStart(2,'0') + ':' +
+        d.getUTCMinutes().toString().padStart(2,'0');
+      chartInstance.data.labels.push(label);
       var ds1 = chartInstance.data.datasets[1];
       if(ds1) ds1.data.push(price);
     }

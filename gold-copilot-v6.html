@@ -680,6 +680,8 @@ var tradeMarks = [];
 var tdWs = null;
 var tdWsConnected = false;
 var currentCandle = null;
+var currentCandleStartTime = 0;
+var currentCandleData = null;
 var chartLoadedWithMT5 = false; // MT5データでチャートを読み込み済みフラグ
 
 // ══ INIT ══
@@ -1212,47 +1214,75 @@ function updateCurrentCandle(price) {
   if(!price || price < 1000 || price > 10000) return;
   if(lastPrice > 0 && Math.abs(price - lastPrice) > 50) return;
 
-  // 現在時刻に最も近い（かつ最新の）ローソク足を探す
+  var tfMs = {
+    '1':60000,'5':300000,'15':900000,
+    '60':3600000,'240':14400000,'1D':86400000,'1W':604800000
+  };
+  var tfDuration = tfMs[currentTf] || 60000;
   var now = Date.now() + brokerTimeOffset;
-  var tfMs = {'1':60000,'5':300000,'15':900000,'60':3600000,'240':14400000,'1D':86400000,'1W':604800000};
-  var tfDuration = tfMs[currentTf] || 900000;
+  var candleStart = Math.floor(now / tfDuration) * tfDuration;
 
-  // 現在時刻のローソク足開始時刻を計算
-  var currentCandleStart = Math.floor(now / tfDuration) * tfDuration;
-
-  // chartDataから現在のローソク足に最も近いものを探す
-  var idx = chartData.length - 1;
-  for(var i = chartData.length - 1; i >= 0; i--) {
-    if(chartData[i].t <= now) {
-      idx = i;
-      break;
+  // 新しいローソク足期間に入った場合
+  if(candleStart !== currentCandleStartTime) {
+    currentCandleStartTime = candleStart;
+    currentCandleData = {
+      t: candleStart,
+      o: price,
+      h: price,
+      l: price,
+      c: price
+    };
+    // chartDataの最後に追加または更新
+    var lastCandle = chartData[chartData.length - 1];
+    if(lastCandle && lastCandle.t === candleStart) {
+      // 既存のローソク足を更新
+    } else {
+      // 新しいローソク足をchartDataに追加
+      chartData.push(currentCandleData);
+      // chartInstanceのdatasetsにも追加
+      var ds0 = chartInstance.data.datasets[0];
+      ds0.data.push([price, price]);
+      if(Array.isArray(ds0.backgroundColor)) {
+        ds0.backgroundColor.push('rgba(0,217,126,0.85)');
+        ds0.borderColor.push('rgba(0,217,126,0.85)');
+      }
+      chartInstance.data.labels.push(
+        new Date(candleStart + 9*3600000).toLocaleString('ja-JP',{
+          month:'2-digit',day:'2-digit',
+          hour:'2-digit',minute:'2-digit',timeZone:'Asia/Tokyo'
+        })
+      );
+      var ds1 = chartInstance.data.datasets[1];
+      if(ds1) ds1.data.push(price);
     }
   }
 
-  var last = chartData[idx];
-  last.c = price;
-  if(price > last.h) last.h = price;
-  if(price < last.l) last.l = price;
+  // 現在のローソク足を更新
+  if(currentCandleData) {
+    currentCandleData.c = price;
+    if(price > currentCandleData.h) currentCandleData.h = price;
+    if(price < currentCandleData.l) currentCandleData.l = price;
 
-  var upC='rgba(0,217,126,0.85)', dnC='rgba(255,77,106,0.85)';
-  var color = last.c >= last.o ? upC : dnC;
+    var idx = chartData.length - 1;
+    var upC='rgba(0,217,126,0.85)', dnC='rgba(255,77,106,0.85)';
+    var color = currentCandleData.c >= currentCandleData.o ? upC : dnC;
 
-  var ds0 = chartInstance.data.datasets[0];
-  ds0.data[idx] = [last.l, last.h];
-  if(Array.isArray(ds0.backgroundColor)) {
-    ds0.backgroundColor[idx] = color;
-    ds0.borderColor[idx] = color;
+    var ds0 = chartInstance.data.datasets[0];
+    ds0.data[idx] = [currentCandleData.l, currentCandleData.h];
+    if(Array.isArray(ds0.backgroundColor)) {
+      ds0.backgroundColor[idx] = color;
+      ds0.borderColor[idx] = color;
+    }
+    var ds1 = chartInstance.data.datasets[1];
+    if(ds1) ds1.data[idx] = price;
+
+    chartInstance.update('none');
+
+    var closes = chartData.map(function(c){return c.c;});
+    var rsi = calcRSI(closes, 14);
+    if(rsi !== null) updateRsiGauge(rsi);
+    if(mt5Positions.length > 0) refreshPositionPnL(price);
   }
-
-  var ds1 = chartInstance.data.datasets[1];
-  if(ds1) ds1.data[idx] = price;
-
-  chartInstance.update('none');
-
-  var closes = chartData.map(function(c){return c.c;});
-  var rsi = calcRSI(closes, 14);
-  if(rsi !== null) updateRsiGauge(rsi);
-  if(mt5Positions.length > 0) refreshPositionPnL(price);
 }
 
 function disconnectAll(){

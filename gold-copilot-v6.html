@@ -1206,18 +1206,35 @@ function updateCurrentCandle(price) {
   if(price > last.h) last.h = price;
   if(price < last.l) last.l = price;
 
-  var datasets = chartInstance.data.datasets;
-  datasets[0].data[chartData.length-1] = [last.l, last.h];
   var upC='rgba(0,217,126,0.85)', dnC='rgba(255,77,106,0.85)';
-  datasets[0].backgroundColor[chartData.length-1] = last.c >= last.o ? upC : dnC;
-  datasets[0].borderColor[chartData.length-1] = last.c >= last.o ? upC : dnC;
-  datasets[1].data[chartData.length-1] = price;
+  var color = last.c >= last.o ? upC : dnC;
+  var idx = chartData.length - 1;
+
+  // dataset[0]はOHLCバー
+  var ds0 = chartInstance.data.datasets[0];
+  ds0.data[idx] = [last.l, last.h];
+  if(Array.isArray(ds0.backgroundColor)) {
+    ds0.backgroundColor[idx] = color;
+    ds0.borderColor[idx] = color;
+  }
+
+  // dataset[1]は終値ライン
+  var ds1 = chartInstance.data.datasets[1];
+  if(ds1) ds1.data[idx] = price;
+
+  // MA20更新
+  var closes = chartData.map(function(c){return c.c;});
+  var ma20data = chartInstance.data.datasets[2];
+  if(ma20data) {
+    var ma20val = closes.slice(-20).reduce(function(a,b){return a+b;},0)/Math.min(closes.length,20);
+    ma20data.data[idx] = +ma20val.toFixed(2);
+  }
 
   chartInstance.update('none');
 
-  var closes = chartData.map(function(c){return c.c;});
+  // RSIとポジション損益も更新
   var rsi = calcRSI(closes, 14);
-  updateRsiGauge(rsi);
+  if(rsi !== null) updateRsiGauge(rsi);
   if(mt5Positions.length > 0) refreshPositionPnL(price);
 }
 

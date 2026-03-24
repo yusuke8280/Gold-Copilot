@@ -672,6 +672,9 @@ var mt5Positions = [];
 var mt5Timer = null;
 var lastPrice = 0;
 var tradeMarks = [];
+var tdWs = null;
+var tdWsConnected = false;
+var currentCandle = null;
 var chartLoadedWithMT5 = false; // MT5データでチャートを読み込み済みフラグ
 
 // ══ INIT ══
@@ -1123,6 +1126,7 @@ async function connectAll(){
   if(TWELVE_KEY && !MT5_TOKEN){
     showSettingsStatus('TwelveDataに接続中...','info');
     await loadChart(currentTf);
+    connectTwelveDataWS();
     showSettingsStatus('リアルタイム価格を有効化しました','ok');
     setTimeout(closeSettings,1200);
     return;
@@ -1143,14 +1147,77 @@ async function connectAll(){
     // USD/JPYを30分ごとに自動更新
     setInterval(fetchUSDJPY, 30*60*1000);
     fetchPositionHistory();
+    connectTwelveDataWS();
     setTimeout(closeSettings,1200);
   } else {
     showSettingsStatus('接続失敗。TokenとAccount IDを確認してください','err');
   }
 }
 
+function connectTwelveDataWS() {
+  if(!TWELVE_KEY) return;
+  if(tdWs) tdWs.close();
+
+  tdWs = new WebSocket('wss://ws.twelvedata.com/v1/quotes/price?apikey=' + TWELVE_KEY);
+
+  tdWs.onopen = function() {
+    tdWsConnected = true;
+    console.log('TwelveData WS接続成功');
+    tdWs.send(JSON.stringify({
+      action: 'subscribe',
+      params: { symbols: 'XAU/USD' }
+    }));
+  };
+
+  tdWs.onmessage = function(e) {
+    var msg = JSON.parse(e.data);
+    if(msg.event === 'price' && msg.symbol === 'XAU/USD') {
+      var price = parseFloat(msg.price);
+      if(price > 0) {
+        updateLivePrice(price);
+        updateTradePrices(price + 0.2, price);
+        updateCurrentCandle(price);
+      }
+    }
+  };
+
+  tdWs.onclose = function() {
+    tdWsConnected = false;
+    console.log('TwelveData WS切断・5秒後再接続');
+    setTimeout(connectTwelveDataWS, 5000);
+  };
+
+  tdWs.onerror = function() {
+    tdWsConnected = false;
+  };
+}
+
+function updateCurrentCandle(price) {
+  if(!chartData.length || !chartInstance) return;
+
+  var last = chartData[chartData.length - 1];
+  last.c = price;
+  if(price > last.h) last.h = price;
+  if(price < last.l) last.l = price;
+
+  var datasets = chartInstance.data.datasets;
+  datasets[0].data[chartData.length-1] = [last.l, last.h];
+  var upC='rgba(0,217,126,0.85)', dnC='rgba(255,77,106,0.85)';
+  datasets[0].backgroundColor[chartData.length-1] = last.c >= last.o ? upC : dnC;
+  datasets[0].borderColor[chartData.length-1] = last.c >= last.o ? upC : dnC;
+  datasets[1].data[chartData.length-1] = price;
+
+  chartInstance.update('none');
+
+  var closes = chartData.map(function(c){return c.c;});
+  var rsi = calcRSI(closes, 14);
+  updateRsiGauge(rsi);
+  if(mt5Positions.length > 0) refreshPositionPnL(price);
+}
+
 function disconnectAll(){
   if(mt5Timer){clearInterval(mt5Timer);mt5Timer=null;}
+  if(tdWs){ tdWs.close(); tdWs=null; tdWsConnected=false; }
   mt5Connected=false; mt5Positions=[];
   MT5_TOKEN=''; MT5_ACCOUNT_ID=''; TWELVE_KEY='';
   try { localStorage.removeItem('gc_twelve_key'); localStorage.removeItem('gc_mt5_token');

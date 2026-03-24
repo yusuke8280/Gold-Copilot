@@ -1177,15 +1177,22 @@ function connectFinnhubWS() {
   };
 
   tdWs.onmessage = function(e) {
-    var msg = JSON.parse(e.data);
-    console.log('Finnhub受信:', JSON.stringify(msg).slice(0,100));
-    if(msg.type === 'trade' && msg.data && msg.data.length) {
-      var price = parseFloat(msg.data[msg.data.length-1].p);
-      if(price > 0) {
-        updateLivePrice(price);
-        updateTradePrices(price + 0.2, price);
-        updateCurrentCandle(price);
+    try {
+      var msg = JSON.parse(e.data);
+      console.log('Finnhub受信:', JSON.stringify(msg).slice(0,100));
+
+      // typeがtradeまたはtypeなしのdataがある場合
+      if(msg.data && msg.data.length) {
+        var latestTrade = msg.data[msg.data.length - 1];
+        var price = parseFloat(latestTrade.p);
+        if(price > 0) {
+          updateLivePrice(price);
+          updateTradePrices(price + 0.2, price);
+          updateCurrentCandle(price);
+        }
       }
+    } catch(err) {
+      console.error('Finnhub parse error:', err);
     }
   };
 

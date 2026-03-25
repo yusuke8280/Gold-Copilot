@@ -779,7 +779,7 @@ function initChartSize() {
 // ══ LOAD CHART ══
 async function loadChart(tf) {
   document.getElementById('chartLoading').classList.add('show');
-  var count = tf==='1'?120:tf==='5'?120:tf==='15'?200:tf==='60'?168:tf==='240'?120:60;
+  var count = tf==='1'?120:tf==='5'?120:tf==='15'?100:tf==='60'?168:tf==='240'?120:60;
   var candles = null;
   var source = 'DEMO';
 
@@ -1261,31 +1261,46 @@ function updateCurrentCandle(price) {
   if(!price || price < 1000 || price > 10000) return;
   if(lastPrice > 0 && Math.abs(price - lastPrice) > 50) return;
 
-  var tfMs = {
-    '1':60000,'5':300000,'15':900000,
-    '60':3600000,'240':14400000,'1D':86400000,'1W':604800000
-  };
-  var tfDuration = tfMs[currentTf] || 60000;
+  // M1/M5のみリアルタイムローソク足管理
+  // それ以外はClose価格のみ更新（新ローソク足を追加しない）
+  var realtimeTfs = ['1', '5'];
+  var idx = chartData.length - 1;
 
-  // Finnhubのタイムスタンプ(ms)を使う
+  if(!realtimeTfs.includes(currentTf)) {
+    // H1以上はClose価格のみ更新
+    chartData[idx].c = price;
+    if(price > chartData[idx].h) chartData[idx].h = price;
+    if(price < chartData[idx].l) chartData[idx].l = price;
+
+    var upC='rgba(0,217,126,0.85)', dnC='rgba(255,77,106,0.85)';
+    var color = chartData[idx].c >= chartData[idx].o ? upC : dnC;
+    chartInstance.data.datasets[0].data[idx] = [chartData[idx].l, chartData[idx].h];
+    if(Array.isArray(chartInstance.data.datasets[0].backgroundColor)) {
+      chartInstance.data.datasets[0].backgroundColor[idx] = color;
+      chartInstance.data.datasets[0].borderColor[idx] = color;
+    }
+    if(chartInstance.data.datasets[1]) chartInstance.data.datasets[1].data[idx] = price;
+    chartInstance.update('none');
+    if(mt5Positions.length > 0) refreshPositionPnL(price);
+    return;
+  }
+
+  // M1/M5は既存のローソク足期間管理ロジックをそのまま使用
+  var tfMs = {'1':60000,'5':300000,'15':900000,'60':3600000,'240':14400000,'1D':86400000,'1W':604800000};
+  var tfDuration = tfMs[currentTf] || 60000;
   var now = finnhubLastTimestamp || Date.now();
   var candleStart = Math.floor(now / tfDuration) * tfDuration;
-
   var lastCandle = chartData[chartData.length - 1];
 
   if(candleStart > lastCandle.t + tfDuration * 0.5) {
-    // 新しいローソク足を追加
     var newCandle = {t: candleStart, o: price, h: price, l: price, c: price, bt: ''};
     chartData.push(newCandle);
-
     var d = new Date(candleStart);
     var label = (d.getUTCMonth()+1).toString().padStart(2,'0') + '/' +
       d.getUTCDate().toString().padStart(2,'0') + ' ' +
       d.getUTCHours().toString().padStart(2,'0') + ':' +
       d.getUTCMinutes().toString().padStart(2,'0');
-
     chartInstance.data.labels.push(label);
-
     var upC='rgba(0,217,126,0.85)';
     chartInstance.data.datasets[0].data.push([price, price]);
     if(Array.isArray(chartInstance.data.datasets[0].backgroundColor)) {
@@ -1293,12 +1308,9 @@ function updateCurrentCandle(price) {
       chartInstance.data.datasets[0].borderColor.push(upC);
     }
     if(chartInstance.data.datasets[1]) chartInstance.data.datasets[1].data.push(price);
-
     currentCandleData = newCandle;
     currentCandleStartTime = candleStart;
-
   } else {
-    // 既存の最新ローソク足を更新
     if(!currentCandleData || currentCandleData.t !== lastCandle.t) {
       currentCandleData = lastCandle;
       currentCandleStartTime = lastCandle.t;
@@ -1308,19 +1320,16 @@ function updateCurrentCandle(price) {
     if(price < currentCandleData.l) currentCandleData.l = price;
   }
 
-  var idx = chartData.length - 1;
-  var upC='rgba(0,217,126,0.85)', dnC='rgba(255,77,106,0.85)';
-  var color = currentCandleData.c >= currentCandleData.o ? upC : dnC;
-
+  idx = chartData.length - 1;
+  var upC2='rgba(0,217,126,0.85)', dnC2='rgba(255,77,106,0.85)';
+  var color2 = currentCandleData.c >= currentCandleData.o ? upC2 : dnC2;
   chartInstance.data.datasets[0].data[idx] = [currentCandleData.l, currentCandleData.h];
   if(Array.isArray(chartInstance.data.datasets[0].backgroundColor)) {
-    chartInstance.data.datasets[0].backgroundColor[idx] = color;
-    chartInstance.data.datasets[0].borderColor[idx] = color;
+    chartInstance.data.datasets[0].backgroundColor[idx] = color2;
+    chartInstance.data.datasets[0].borderColor[idx] = color2;
   }
   if(chartInstance.data.datasets[1]) chartInstance.data.datasets[1].data[idx] = price;
-
   chartInstance.update('none');
-
   var closes = chartData.map(function(c){return c.c;});
   var rsi = calcRSI(closes, 14);
   if(rsi !== null) updateRsiGauge(rsi);

@@ -783,17 +783,25 @@ async function loadChart(tf) {
   var candles = null;
   var source = 'DEMO';
 
-  // 1. MetaApi（最優先）
-  if(MT5_TOKEN && MT5_ACCOUNT_ID && mt5Connected) {
+  // M1/M5のみMetaApiを優先
+  if((tf==='1' || tf==='5') && MT5_TOKEN && MT5_ACCOUNT_ID && mt5Connected) {
     candles = await fetchMetaApiCandles(tf, count);
     if(candles && candles.length) source = 'MT5';
   }
-  // 2. TwelveData
+
+  // H1以上 または MetaApi失敗時はTwelveDataを使用
   if(!candles && TWELVE_KEY) {
     candles = await fetchTwelveData(tf, count);
     if(candles && candles.length) source = 'TwelveData';
   }
-  // 3. デモデータ
+
+  // TwelveData失敗時はMetaApiにフォールバック
+  if(!candles && MT5_TOKEN && MT5_ACCOUNT_ID && mt5Connected) {
+    candles = await fetchMetaApiCandles(tf, count);
+    if(candles && candles.length) source = 'MT5';
+  }
+
+  // デモデータ
   if(!candles || !candles.length) {
     candles = generateDemo(tf, count);
     source = 'DEMO';
@@ -804,7 +812,7 @@ async function loadChart(tf) {
   buildChart(candles, overlayLines.concat(entryLines));
   updateHeaderFromCandles(candles);
   document.getElementById('chartLoading').classList.remove('show');
-  if(chartInstance && tradeMarks.length) chartInstance.update('none');
+  if(tradeMarks && tradeMarks.length && chartInstance) chartInstance.update('none');
 }
 
 // ══ METAAPI CANDLES ══

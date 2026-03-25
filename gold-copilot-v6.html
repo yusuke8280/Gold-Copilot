@@ -448,7 +448,8 @@ canvas{display:block;width:100% !important;}
   <div class="header-right">
     <div>
       <div class="price-main" id="hdrPrice">---.--</div>
-      <div class="price-change" id="hdrChange">XAUUSDs · MT5&nbsp;<span id="hdrPct" style="font-size:9px;"></span></div>
+      <div class="price-change" id="hdrChange">XAUUSDs · MT5</div>
+      <div id="hdrPct" style="font-size:10px;text-align:right;margin-top:2px;"></div>
     </div>
     <div class="mt5-badge" id="mt5Badge" onclick="openSettings()">
       <div class="mt5-dot"></div>
@@ -1084,10 +1085,11 @@ function updateHeaderFromCandles(candles) {
 }
 
 function updateHdrPct(price) {
+  var el = document.getElementById('hdrPct');
+  if(!el) return;
   if(!dayOpenPrice || dayOpenPrice <= 0) return;
   var pct = (price - dayOpenPrice) / dayOpenPrice * 100;
   var sign = pct >= 0 ? '+' : '';
-  var el = document.getElementById('hdrPct');
   el.textContent = sign + pct.toFixed(2) + '%';
   el.className = pct >= 0 ? 'positive' : 'negative';
 }

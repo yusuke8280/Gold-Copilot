@@ -353,13 +353,20 @@ canvas{display:block;width:100% !important;}
   display:flex;align-items:center;gap:6px;margin-bottom:8px;
 }
 .trade-lot-row label{font-size:9px;color:var(--muted);letter-spacing:1px;white-space:nowrap;}
-.lot-btn{
-  padding:5px 10px;background:var(--surface2);
+.lot-btn{display:none;}
+.pct-btn{
+  flex:1;padding:5px 0;background:var(--surface2);
   border:1px solid var(--border);border-radius:6px;
   font-family:'Space Mono',monospace;font-size:10px;
-  color:var(--text);cursor:pointer;
+  color:var(--muted);cursor:pointer;text-align:center;
+  transition:all 0.15s;
 }
-.lot-btn.active{border-color:var(--gold);color:var(--gold);}
+.pct-btn.active{border-color:var(--gold);color:var(--gold);background:rgba(240,180,41,0.08);}
+.margin-info{
+  font-size:9px;color:var(--muted);letter-spacing:0.5px;
+  text-align:center;margin-bottom:6px;
+  font-family:'Space Mono',monospace;
+}
 .trade-btn-row{display:flex;gap:8px;}
 .trade-btn{
   flex:1;padding:12px 8px;border:none;border-radius:10px;
@@ -398,15 +405,19 @@ canvas{display:block;width:100% !important;}
   font-family:'Space Mono',monospace;font-size:12px;outline:none;width:100%;
 }
 .trd-tpsl-input:focus{border-color:var(--gold);}
-/* 注文タイプタブ */
-.trd-type-row{display:flex;gap:6px;margin-bottom:14px;}
+/* 注文タイプタブ（Bybitスタイル） */
+.trd-type-row{
+  display:flex;margin-bottom:14px;
+  border-bottom:1px solid var(--border);
+}
 .trd-type-btn{
-  flex:1;padding:7px 4px;background:var(--surface2);
-  border:1px solid var(--border);border-radius:8px;
+  flex:1;padding:8px 4px;background:transparent;
+  border:none;border-bottom:2px solid transparent;
   font-family:'Space Mono',monospace;font-size:10px;font-weight:700;
   color:var(--muted);cursor:pointer;letter-spacing:1px;
+  margin-bottom:-1px;transition:color 0.15s,border-color 0.15s;
 }
-.trd-type-btn.active{border-color:var(--gold);color:var(--gold);background:rgba(240,180,41,0.08);}
+.trd-type-btn.active{border-bottom:2px solid var(--gold);color:var(--gold);}
 .trd-limit-price-wrap{margin-bottom:12px;}
 .trd-limit-price-label{font-size:9px;color:var(--muted);letter-spacing:1px;margin-bottom:4px;}
 .trd-limit-price-input{
@@ -437,7 +448,7 @@ canvas{display:block;width:100% !important;}
   <div class="header-right">
     <div>
       <div class="price-main" id="hdrPrice">---.--</div>
-      <div class="price-change" id="hdrChange">XAUUSDs · MT5</div>
+      <div class="price-change" id="hdrChange">XAUUSDs · MT5&nbsp;<span id="hdrPct" style="font-size:9px;"></span></div>
     </div>
     <div class="mt5-badge" id="mt5Badge" onclick="openSettings()">
       <div class="mt5-dot"></div>
@@ -587,15 +598,22 @@ canvas{display:block;width:100% !important;}
 
 <!-- TRADE PANEL -->
 <div class="trade-panel" id="tradePanel">
-  <div class="trade-lot-row">
-    <label>LOT</label>
-    <button class="lot-btn active" data-lot="0.01">0.01</button>
-    <button class="lot-btn" data-lot="0.02">0.02</button>
-    <button class="lot-btn" data-lot="0.03">0.03</button>
-    <input type="number" id="lotInput" value="0.01" step="0.01" min="0.01"
-      style="width:64px;background:var(--bg);border:1px solid var(--border);border-radius:6px;
-             padding:4px 6px;color:var(--text);font-family:'Space Mono',monospace;font-size:11px;outline:none;">
+  <div class="trade-lot-row" style="flex-direction:column;align-items:stretch;gap:5px;">
+    <div style="display:flex;align-items:center;gap:6px;">
+      <label style="font-size:9px;color:var(--muted);letter-spacing:1px;white-space:nowrap;">LOT</label>
+      <input type="number" id="lotInput" value="0.01" step="0.01" min="0.01"
+        style="width:64px;background:var(--bg);border:1px solid var(--border);border-radius:6px;
+               padding:4px 6px;color:var(--text);font-family:'Space Mono',monospace;font-size:11px;outline:none;">
+      <div style="display:flex;gap:4px;flex:1;">
+        <button class="pct-btn active" data-pct="0">0%</button>
+        <button class="pct-btn" data-pct="25">25%</button>
+        <button class="pct-btn" data-pct="50">50%</button>
+        <button class="pct-btn" data-pct="75">75%</button>
+        <button class="pct-btn" data-pct="100">100%</button>
+      </div>
+    </div>
   </div>
+  <div class="margin-info" id="marginInfo">必要証拠金: --- | 利用可能: ---</div>
   <div class="trade-btn-row">
     <button class="trade-btn t-buy" id="trdBuyBtn">BUY<br>
       <span id="trdAskPrice" style="font-size:14px;letter-spacing:0;">---.--</span>
@@ -676,6 +694,9 @@ var mt5Connected = false;
 var mt5Positions = [];
 var mt5Timer = null;
 var lastPrice = 0;
+var dayOpenPrice = 0;
+var mt5Balance = 0;
+var mt5Equity = 0;
 var tradeMarks = [];
 var tdWs = null;
 var tdWsConnected = false;
@@ -1056,10 +1077,30 @@ function updateHeaderFromCandles(candles) {
   if(!candles.length) return;
   var last = candles[candles.length-1];
   var first = candles[0];
-  var diff = last.c - first.o;
-  var pct = (diff/first.o*100).toFixed(2);
+  dayOpenPrice = first.o;
   document.getElementById('hdrPrice').textContent = last.c.toFixed(2);
   lastPrice = last.c;
+  updateHdrPct(last.c);
+}
+
+function updateHdrPct(price) {
+  if(!dayOpenPrice || dayOpenPrice <= 0) return;
+  var pct = (price - dayOpenPrice) / dayOpenPrice * 100;
+  var sign = pct >= 0 ? '+' : '';
+  var el = document.getElementById('hdrPct');
+  el.textContent = sign + pct.toFixed(2) + '%';
+  el.className = pct >= 0 ? 'positive' : 'negative';
+}
+
+function updateMarginInfo() {
+  var lot = parseFloat(document.getElementById('lotInput').value) || 0.01;
+  var price = lastPrice || 0;
+  var req = price > 0 ? Math.round(lot * price * USD_JPY) : 0;
+  var avail = mt5Equity > 0 ? Math.round(mt5Equity) : 0;
+  var el = document.getElementById('marginInfo');
+  el.textContent = req > 0
+    ? '必要証拠金: ¥' + req.toLocaleString() + ' | 利用可能: ¥' + avail.toLocaleString()
+    : '必要証拠金: --- | 利用可能: ' + (avail > 0 ? '¥' + avail.toLocaleString() : '---');
 }
 
 function updateLivePrice(price) {
@@ -1070,12 +1111,11 @@ function updateLivePrice(price) {
   el.textContent = price.toFixed(2);
   if(prev>0){
     var diff = price-prev;
-    var pct = (diff/prev*100).toFixed(3);
-    var chEl = document.getElementById('hdrChange');
-    // ソースは変えない、差分だけ更新
     el.style.color = diff>=0?'var(--green)':'var(--red)';
     setTimeout(function(){el.style.color='';},400);
   }
+  updateHdrPct(price);
+  updateMarginInfo();
   // MT5ポジションの損益再計算
   if(mt5Positions.length>0) refreshPositionPnL(price);
 }
@@ -1318,8 +1358,11 @@ async function fetchMT5Data(){
       var info=await r1.json();
       document.getElementById('balanceBar').classList.add('show');
       document.getElementById('tfBar').classList.add('with-balance');
-      document.getElementById('balVal').textContent='¥'+Math.round(info.balance).toLocaleString();
-      document.getElementById('equityVal').textContent='¥'+Math.round(info.equity).toLocaleString();
+      mt5Balance = info.balance || 0;
+      mt5Equity = info.equity || 0;
+      document.getElementById('balVal').textContent='¥'+Math.round(mt5Balance).toLocaleString();
+      document.getElementById('equityVal').textContent='¥'+Math.round(mt5Equity).toLocaleString();
+      updateMarginInfo();
       initChartSize();
     }
     // ポジション
@@ -2226,12 +2269,21 @@ async function closeAllPositions(){
 }
 
 window.addEventListener('DOMContentLoaded', function(){
-  // LOTプリセットボタン
-  document.querySelectorAll('.lot-btn').forEach(function(btn){
+  // 証拠金比率ボタン
+  document.querySelectorAll('.pct-btn').forEach(function(btn){
     btn.addEventListener('click', function(){
-      document.querySelectorAll('.lot-btn').forEach(function(b){ b.classList.remove('active'); });
+      document.querySelectorAll('.pct-btn').forEach(function(b){ b.classList.remove('active'); });
       btn.classList.add('active');
-      document.getElementById('lotInput').value = parseFloat(btn.dataset.lot).toFixed(2);
+      var pct = parseInt(btn.dataset.pct);
+      if(pct === 0) {
+        document.getElementById('lotInput').value = '0.01';
+      } else if(mt5Equity > 0 && lastPrice > 0) {
+        // 証拠金 ÷ 現在価格 ÷ 100 × パーセンテージ
+        var lot = mt5Equity / lastPrice / 100 * pct;
+        lot = Math.max(0.01, Math.round(lot * 100) / 100);
+        document.getElementById('lotInput').value = lot.toFixed(2);
+      }
+      updateMarginInfo();
     });
   });
   // LOT手動入力
@@ -2239,8 +2291,9 @@ window.addEventListener('DOMContentLoaded', function(){
     var v = parseFloat(this.value);
     if(!isNaN(v) && v > 0){
       this.value = (Math.round(v * 100) / 100).toFixed(2);
-      document.querySelectorAll('.lot-btn').forEach(function(b){ b.classList.remove('active'); });
+      document.querySelectorAll('.pct-btn').forEach(function(b){ b.classList.remove('active'); });
     }
+    updateMarginInfo();
   });
   // BUYボタン
   document.getElementById('trdBuyBtn').addEventListener('click', function(){

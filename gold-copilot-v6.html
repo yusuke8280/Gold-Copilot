@@ -1777,7 +1777,9 @@ async function analyzeWithClaude(){
 
 【チャートデータ】
 - 時間足: ${currentTf}分足
-- 現在価格: ${lastPrice}
+- 現在価格: ${lastPrice}（リアルタイム価格・最優先）
+- チャート最終値: ${chartData[chartData.length-1].c}
+- ※現在価格を基準にTP/SL/エントリーを計算してください
 - RSI(14): ${currentRsi}
 - MA20: ${ma20.toFixed(2)}
 - MA50: ${ma50.toFixed(2)}

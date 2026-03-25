@@ -1045,8 +1045,12 @@ function drawTradeMarks(chart, deals) {
     if(xPos < xScale.left || xPos > xScale.right) return;
 
     var isBuy = deal.type === 'DEAL_TYPE_BUY';
-    var price = parseFloat(deal.price || 0);
+    var price = deal.price || parseFloat(deal.p) || 0;
+    price = parseFloat(price);
     if(price <= 0) return;
+    var yMin = yScale.min || 0;
+    var yMax = yScale.max || 99999;
+    if(price < yMin || price > yMax) return;
     var yPos = yScale.getPixelForValue(price);
     if(yPos < yScale.top || yPos > yScale.bottom) return;
 

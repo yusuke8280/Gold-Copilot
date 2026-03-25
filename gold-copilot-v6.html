@@ -882,8 +882,12 @@ function buildChart(candles, lines) {
   var closes = candles.map(function(c){return c.c;});
 
   // Y軸範囲をローソク足+ラインを含めて計算
-  var allPrices = lows.concat(highs).filter(function(v){ return v > 0 && !isNaN(v); });
-  lines.forEach(function(l){ if(l.price > 100) allPrices.push(l.price); });
+  var allPrices = lows.concat(highs).filter(function(v){
+    return v > 1000 && v < 100000 && !isNaN(v);
+  });
+  lines.forEach(function(l){
+    if(l.price > 1000 && l.price < 100000) allPrices.push(l.price);
+  });
   var yAxisMin = Math.min.apply(null, allPrices) * 0.9994;
   var yAxisMax = Math.max.apply(null, allPrices) * 1.0006;
 
@@ -1044,6 +1048,7 @@ function drawTradeMarks(chart, deals) {
     var price = parseFloat(deal.price || 0);
     if(price <= 0) return;
     var yPos = yScale.getPixelForValue(price);
+    if(yPos < yScale.top || yPos > yScale.bottom) return;
 
     ctx2.save();
     ctx2.font = 'bold 12px Space Mono, monospace';
@@ -2392,7 +2397,7 @@ function fitYAxis(minIdx,maxIdx){
   if(!ls.length)return;
   // 建値ライン・S/Rラインも範囲に含める
   overlayLines.concat(entryLines).forEach(function(l){
-    if(l.price > 3000 && l.price < 10000){ls.push(l.price);hs.push(l.price);}
+    if(l.price > 1000 && l.price < 100000){ls.push(l.price);hs.push(l.price);}
   });
   chartInstance.options.scales.y.min=Math.min.apply(null,ls)*0.9994;
   chartInstance.options.scales.y.max=Math.max.apply(null,hs)*1.0006;

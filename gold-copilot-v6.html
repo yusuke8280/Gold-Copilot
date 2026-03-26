@@ -786,6 +786,9 @@ async function loadChart(tf) {
   }
 
   chartData = candles;
+  console.log('[loadChart] currentTf:', tf, '| source:', source, '| chartData 最初の3本:', chartData.slice(0,3).map(function(c){
+    return {t:new Date(c.t).toISOString(), o:c.o, h:c.h, l:c.l, c:c.c};
+  }));
   document.getElementById('hdrChange').textContent = 'XAUUSDs · ' + source;
   buildChart(candles, overlayLines.concat(entryLines));
   updateHeaderFromCandles(candles);
@@ -810,14 +813,20 @@ async function fetchMetaApiCandles(tf, count) {
     if(!res.ok) return null;
     var data = await res.json();
     if(!Array.isArray(data) || !data.length) return null;
-    console.log('[MetaApi] 最初のローソク足（生データ）:', JSON.stringify(data[0], null, 2));
-    return data.map(function(v){
+    console.log('[MetaApi] 生データ 最初の3本:', data.slice(0,3).map(function(v){
+      return {time:v.time, brokerTime:v.brokerTime, open:v.open, high:v.high, low:v.low, close:v.close};
+    }));
+    var mapped = data.map(function(v){
       return {
         t: new Date(v.time).getTime(),
         bt: v.brokerTime,
         o: +v.open, h: +v.high, l: +v.low, c: +v.close
       };
     }).sort(function(a,b){return a.t-b.t;}).slice(-count); // 新しいcount件だけ使う
+    console.log('[MetaApi] マッピング後 最初の3本:', mapped.slice(0,3).map(function(c){
+      return {t:new Date(c.t).toISOString(), bt:c.bt, o:c.o, h:c.h, l:c.l, c:c.c};
+    }));
+    return mapped;
   } catch(e) { return null; }
 }
 

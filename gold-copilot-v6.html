@@ -801,12 +801,21 @@ async function loadChart(tf) {
 async function fetchMetaApiCandles(tf, count) {
   var tfMap = {'1':'1m','5':'5m','15':'15m','60':'1h','240':'4h','1D':'1d','1W':'1w'};
   var timeframe = tfMap[tf] || '15m';
+  var secMap = {'1':60,'5':300,'15':900,'60':3600,'240':14400,'1D':86400,'1W':604800};
+  var tfMs = (secMap[tf] || 900) * 1000;
+  var startTime = new Date(Date.now() - count * tfMs * 2).toISOString();
   var url = 'https://mt-client-api-v1.london.agiliumtrade.ai/users/current/accounts/'
-    + MT5_ACCOUNT_ID + '/symbols/XAUUSDs/candles/' + timeframe + '?count=' + count;
+    + MT5_ACCOUNT_ID + '/history-candles/symbols/XAUUSDs/timeframes/'
+    + timeframe + '/candles?startTime=' + encodeURIComponent(startTime) + '&limit=' + count;
   console.log('[MetaApi] URL:', url);
   try {
     var res = await fetch(url, {headers:{'auth-token':MT5_TOKEN}});
-    if(!res.ok) return null;
+    if(!res.ok) {
+      console.log('[MetaApi] status:', res.status);
+      var errText = await res.text();
+      console.log('[MetaApi] error body:', errText);
+      return null;
+    }
     var data = await res.json();
     if(!Array.isArray(data) || !data.length) return null;
     console.log('[MetaApi] 取得件数:', data.length, '最初:', data[0].brokerTime, '最後:', data[data.length-1].brokerTime);

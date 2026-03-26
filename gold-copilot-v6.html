@@ -1216,6 +1216,7 @@ async function connectAll(){
     setInterval(fetchUSDJPY, 30*60*1000);
     fetchPositionHistory();
     connectFinnhubWS();
+    loadChart(currentTf); // MT5接続完了後にMT5データでチャートを再読み込み
     setTimeout(closeSettings,1200);
   } else {
     showSettingsStatus('接続失敗。TokenとAccount IDを確認してください','err');

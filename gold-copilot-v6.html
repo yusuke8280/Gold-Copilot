@@ -1668,8 +1668,11 @@ async function analyzeChart(){
   await loadChart(currentTf);
   // Claude APIで本格分析（Cloudflare Worker経由）
   await analyzeWithClaude();
-  return;
-  // ルールベース分析（フォールバック・ダウ理論ベース）
+}
+
+// ルールベースのフォールバック分析（ダウ理論ベース）
+function runFallbackAnalysis(){
+  if(!chartData.length) return;
   var dow = calcDowTheory(chartData);
   var last = chartData[chartData.length-1];
   var price = lastPrice || last.c;
@@ -1697,6 +1700,10 @@ async function analyzeChart(){
     sl = +(price - atr*1.5).toFixed(2);
   }
   var rrNum = Math.abs(tp-price) / (Math.abs(sl-price)||1);
+  var ma20Val = (function(){
+    var cls = chartData.slice(-20).map(function(c){return c.c;});
+    return cls.length ? (cls.reduce(function(a,b){return a+b;},0)/cls.length).toFixed(2) : '--';
+  })();
 
   var r = {
     signal: signal, strength: strength,
@@ -1714,10 +1721,7 @@ async function analyzeChart(){
     ],
     analysis: dow.trend+'が継続中。'+dow.trendDetail+'を確認。ダウ理論に基づきエントリーを検討してください。',
     warning: 'ルールベース分析です。必ず自己判断でトレードしてください。',
-    ma20: (function(){
-      var cls=chartData.slice(-20).map(function(c){return c.c;});
-      return cls.length?(cls.reduce(function(a,b){return a+b;},0)/cls.length).toFixed(2):'--';
-    })(),
+    ma20: ma20Val,
     atr: atr
   };
 
@@ -1833,10 +1837,10 @@ RSIやCCIなどのオシレーターは一切使わないこと。
     buildChart(chartData,overlayLines.concat(entryLines));
     renderAI(r);
   } catch(err) {
-    console.error('GPT分析エラー:', err);
-    // フォールバック：ルールベース分析を使用
-    document.getElementById('aiPlaceholder').querySelector('.ai-placeholder-text').textContent='分析中...';
-    OPENAI_KEY = ""; await analyzeChart();
+    console.error('Claude分析エラー:', err);
+    // フォールバック：ルールベース分析を使用（analyzeChart再呼び出しは無限再帰になるため直接呼ぶ）
+    document.getElementById('aiPlaceholder').querySelector('.ai-placeholder-text').textContent='ルールベース分析中...';
+    runFallbackAnalysis();
   }
 }
 
@@ -2397,24 +2401,24 @@ function calcDowTheory(candles) {
   }
   var n = 3;
   var swingHighs = [], swingLows = [];
-  for(var i = n; i < candles.length - n; i++){
+  for(var si = n; si < candles.length - n; si++){
     var isHigh = true, isLow = true;
     for(var j = 1; j <= n; j++){
-      if(candles[i].h <= candles[i-j].h || candles[i].h <= candles[i+j].h) isHigh = false;
-      if(candles[i].l >= candles[i-j].l || candles[i].l >= candles[i+j].l) isLow  = false;
+      if(candles[si].h <= candles[si-j].h || candles[si].h <= candles[si+j].h) isHigh = false;
+      if(candles[si].l >= candles[si-j].l || candles[si].l >= candles[si+j].l) isLow  = false;
     }
-    if(isHigh) swingHighs.push({idx:i, price:candles[i].h, t:candles[i].t});
-    if(isLow)  swingLows.push( {idx:i, price:candles[i].l, t:candles[i].t});
+    if(isHigh) swingHighs.push({idx:si, price:candles[si].h, t:candles[si].t});
+    if(isLow)  swingLows.push( {idx:si, price:candles[si].l, t:candles[si].t});
   }
   var recentHighs = swingHighs.slice(-4);
   var recentLows  = swingLows.slice(-4);
 
   var hhCount=0, hlCount=0, lhCount=0, llCount=0;
-  for(var i=1; i<recentHighs.length; i++){
-    if(recentHighs[i].price > recentHighs[i-1].price) hhCount++; else lhCount++;
+  for(var hi=1; hi<recentHighs.length; hi++){
+    if(recentHighs[hi].price > recentHighs[hi-1].price) hhCount++; else lhCount++;
   }
-  for(var i=1; i<recentLows.length; i++){
-    if(recentLows[i].price > recentLows[i-1].price) hlCount++; else llCount++;
+  for(var li=1; li<recentLows.length; li++){
+    if(recentLows[li].price > recentLows[li-1].price) hlCount++; else llCount++;
   }
 
   var trend, trendDetail, trendColor;

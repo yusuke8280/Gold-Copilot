@@ -1670,67 +1670,35 @@ async function analyzeChart(){
   await analyzeWithClaude();
 }
 
-// ルールベースのフォールバック分析（ダウ理論ベース）
 function runFallbackAnalysis(){
   if(!chartData.length) return;
   var dow = calcDowTheory(chartData);
-  var last = chartData[chartData.length-1];
-  var price = lastPrice || last.c;
+  var price = lastPrice || chartData[chartData.length-1].c;
   var atr = dow.atr;
-
-  var signal, strength;
-  if(dow.trend==='上昇トレンド'){ signal='BUY';  strength='中'; }
-  else if(dow.trend==='下降トレンド'){ signal='SELL'; strength='中'; }
-  else { signal='WAIT'; strength='弱'; }
-
-  var r1 = dow.resistanceLevels[0] || +(price*1.005).toFixed(2);
-  var r2 = dow.resistanceLevels[1] || +(price*1.010).toFixed(2);
-  var s1 = dow.supportLevels[0]    || +(price*0.995).toFixed(2);
-  var s2 = dow.supportLevels[1]    || +(price*0.990).toFixed(2);
-
-  var tp, sl;
-  if(signal==='BUY'){
-    tp = +(price + atr*2).toFixed(2);
-    sl = +(price - atr*1).toFixed(2);
-  } else if(signal==='SELL'){
-    tp = +(price - atr*2).toFixed(2);
-    sl = +(price + atr*1).toFixed(2);
-  } else {
-    tp = +(price + atr*1.5).toFixed(2);
-    sl = +(price - atr*1.5).toFixed(2);
-  }
-  var rrNum = Math.abs(tp-price) / (Math.abs(sl-price)||1);
-  var ma20Val = (function(){
-    var cls = chartData.slice(-20).map(function(c){return c.c;});
-    return cls.length ? (cls.reduce(function(a,b){return a+b;},0)/cls.length).toFixed(2) : '--';
-  })();
-
-  var r = {
-    signal: signal, strength: strength,
-    dow_trend: dow.trend, dow_basis: dow.trendDetail,
-    entry_reason: [
-      'ダウ理論: '+dow.trendDetail,
-      signal==='BUY'?'押し目での買い':signal==='SELL'?'戻り売り':'様子見',
-      'ATR基準TP/SL設定'
-    ],
-    entry: price, tp: tp, sl: sl,
-    rr: '1:'+rrNum.toFixed(1),
-    sr: [
-      {label:'R1', price:r1}, {label:'R2', price:r2},
-      {label:'S1', price:s1}, {label:'S2', price:s2}
-    ],
-    analysis: dow.trend+'が継続中。'+dow.trendDetail+'を確認。ダウ理論に基づきエントリーを検討してください。',
-    warning: 'ルールベース分析です。必ず自己判断でトレードしてください。',
-    ma20: ma20Val,
-    atr: atr
-  };
-
-  analysisResult = r;
-  overlayLines = r.sr.filter(function(l){return l.price>1000&&l.price<100000;}).map(function(s){
-    var colorMap={R1:'#ff4d6a',R2:'#ff8099',S1:'#00d97e',S2:'#66ffbb'};
-    return {price:s.price, color:colorMap[s.label]||'#f0b429', label:s.label, width:1.5, dash:[4,3]};
+  var signal = dow.trend==='上昇トレンド'?'BUY':dow.trend==='下降トレンド'?'SELL':'WAIT';
+  var strength = signal==='WAIT'?'弱':'中';
+  var r1=dow.resistanceLevels[0]||+(price*1.005).toFixed(2);
+  var r2=dow.resistanceLevels[1]||+(price*1.010).toFixed(2);
+  var s1=dow.supportLevels[0]||+(price*0.995).toFixed(2);
+  var s2=dow.supportLevels[1]||+(price*0.990).toFixed(2);
+  var tp=signal==='BUY'?+(price+atr*2).toFixed(2):signal==='SELL'?+(price-atr*2).toFixed(2):+(price+atr*1.5).toFixed(2);
+  var sl=signal==='BUY'?+(price-atr*1).toFixed(2):signal==='SELL'?+(price+atr*1).toFixed(2):+(price-atr*1.5).toFixed(2);
+  var rrNum=Math.abs(tp-price)/(Math.abs(sl-price)||1);
+  var cls=chartData.slice(-20).map(function(c){return c.c;});
+  var ma20val=cls.length?(cls.reduce(function(a,b){return a+b;},0)/cls.length).toFixed(2):'--';
+  var r={signal:signal,strength:strength,dow_trend:dow.trend,dow_basis:dow.trendDetail,
+    entry_reason:['ダウ理論: '+dow.trendDetail,signal==='BUY'?'押し目買い':signal==='SELL'?'戻り売り':'様子見','ATR基準TP/SL'],
+    entry:price,tp:tp,sl:sl,rr:'1:'+rrNum.toFixed(1),
+    sr:[{label:'R1',price:r1},{label:'R2',price:r2},{label:'S1',price:s1},{label:'S2',price:s2}],
+    analysis:dow.trend+'継続。'+dow.trendDetail+'確認。ダウ理論でエントリー検討。',
+    warning:'ローカル分析。必ず自己判断でトレードしてください。',
+    ma20:ma20val,atr:atr};
+  analysisResult=r;
+  overlayLines=r.sr.filter(function(l){return l.price>1000&&l.price<100000;}).map(function(s){
+    var cm={R1:'#ff4d6a',R2:'#ff8099',S1:'#00d97e',S2:'#66ffbb'};
+    return {price:s.price,color:cm[s.label]||'#f0b429',label:s.label,width:1.5,dash:[4,3]};
   });
-  buildChart(chartData, overlayLines.concat(entryLines));
+  buildChart(chartData,overlayLines.concat(entryLines));
   renderAI(r);
 }
 
@@ -1838,8 +1806,6 @@ RSIやCCIなどのオシレーターは一切使わないこと。
     renderAI(r);
   } catch(err) {
     console.error('Claude分析エラー:', err);
-    // フォールバック：ルールベース分析を使用（analyzeChart再呼び出しは無限再帰になるため直接呼ぶ）
-    document.getElementById('aiPlaceholder').querySelector('.ai-placeholder-text').textContent='ルールベース分析中...';
     runFallbackAnalysis();
   }
 }

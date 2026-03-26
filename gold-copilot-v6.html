@@ -1785,6 +1785,7 @@ RSIやCCIなどのオシレーターは一切使わないこと。
     var jsonMatch = text.match(/\{[\s\S]*\}/);
     if(!jsonMatch) throw new Error('JSON parse error');
     var r = JSON.parse(jsonMatch[0]);
+    r.atr = atr;
     analysisResult = r;
     // S/Rラインをチャートに反映（sr配列形式 or 旧形式に対応）
     var srLines = [];

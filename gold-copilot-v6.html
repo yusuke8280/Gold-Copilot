@@ -802,13 +802,13 @@ async function fetchMetaApiCandles(tf, count) {
   var tfMap = {'1':'1m','5':'5m','15':'15m','60':'1h','240':'4h','1D':'1d','1W':'1w'};
   var timeframe = tfMap[tf] || '15m';
   var secMap = {'1':60,'5':300,'15':900,'60':3600,'240':14400,'1D':86400,'1W':604800};
-  var sec = secMap[tf] || 900;
-  // brokerTimeOffsetでブローカーサーバー時刻に合わせてstartTimeを計算
-  var brokerNow = Date.now() + brokerTimeOffset;
-  var startTime = new Date(brokerNow - sec*(count*3+10)*1000).toISOString();
+  var tfMs = (secMap[tf] || 900) * 1000;
+  var endTime   = new Date().toISOString();
+  var startTime = new Date(Date.now() - count * tfMs).toISOString();
+  console.log('[MetaApi] リクエスト範囲:', startTime, '→', endTime);
   var url = 'https://mt-market-data-client-api-v1.london.agiliumtrade.ai/users/current/accounts/'
     + MT5_ACCOUNT_ID + '/historical-market-data/symbols/XAUUSDs/timeframes/'
-    + timeframe + '/candles?startTime=' + encodeURIComponent(startTime) + '&limit=' + (count*3);
+    + timeframe + '/candles?startTime=' + encodeURIComponent(startTime) + '&limit=' + count;
   try {
     var res = await fetch(url, {headers:{'auth-token':MT5_TOKEN}});
     if(!res.ok) return null;

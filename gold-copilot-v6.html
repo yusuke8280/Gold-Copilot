@@ -809,6 +809,7 @@ async function fetchMetaApiCandles(tf, count) {
   var url = 'https://mt-market-data-client-api-v1.london.agiliumtrade.ai/users/current/accounts/'
     + MT5_ACCOUNT_ID + '/historical-market-data/symbols/XAUUSDs/timeframes/'
     + timeframe + '/candles?startTime=' + encodeURIComponent(startTime) + '&limit=' + fetchLimit;
+  console.log('[MetaApi] URL:', url);
   try {
     var res = await fetch(url, {headers:{'auth-token':MT5_TOKEN}});
     if(!res.ok) return null;

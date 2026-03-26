@@ -767,22 +767,16 @@ async function loadChart(tf) {
   var candles = null;
   var source = 'DEMO';
 
-  // M1/M5のみMetaApiを優先
-  if((tf==='1' || tf==='5') && MT5_TOKEN && MT5_ACCOUNT_ID && mt5Connected) {
+  // MT5接続済みの場合は全時間足でMetaApiを最優先
+  if(MT5_TOKEN && MT5_ACCOUNT_ID && mt5Connected) {
     candles = await fetchMetaApiCandles(tf, count);
     if(candles && candles.length) source = 'MT5';
   }
 
-  // H1以上 または MetaApi失敗時はTwelveDataを使用
+  // MetaApi未接続またはフォールバック：TwelveData
   if(!candles && TWELVE_KEY) {
     candles = await fetchTwelveData(tf, count);
     if(candles && candles.length) source = 'TwelveData';
-  }
-
-  // TwelveData失敗時はMetaApiにフォールバック
-  if(!candles && MT5_TOKEN && MT5_ACCOUNT_ID && mt5Connected) {
-    candles = await fetchMetaApiCandles(tf, count);
-    if(candles && candles.length) source = 'MT5';
   }
 
   // デモデータ
@@ -924,6 +918,30 @@ function buildChart(candles, lines) {
 
   chartInstance = new Chart(ctx, {
     type:'bar',
+    plugins:[{
+      id:'candleBody',
+      afterDraw:function(chart){
+        var xScale=chart.scales.x, yScale=chart.scales.y;
+        if(!xScale||!yScale) return;
+        var ctx2=chart.ctx;
+        var meta=chart.getDatasetMeta(0);
+        if(!meta||!meta.data||!meta.data.length) return;
+        candles.forEach(function(c,i){
+          var bar=meta.data[i];
+          if(!bar) return;
+          var barW=bar.width||10;
+          var x=bar.x;
+          var yO=yScale.getPixelForValue(c.o);
+          var yC=yScale.getPixelForValue(c.c);
+          var top=Math.min(yO,yC);
+          var h=Math.abs(yO-yC);
+          if(h<1) h=1;
+          var isBull=c.c>=c.o;
+          ctx2.fillStyle=isBull?'rgba(0,217,126,0.85)':'rgba(255,77,106,0.85)';
+          ctx2.fillRect(x-barW/2, top, barW, h);
+        });
+      }
+    }],
     data:{
       labels:labels,
       datasets:[
@@ -947,7 +965,7 @@ function buildChart(candles, lines) {
         tooltip:{callbacks:{label:function(ctx){
           var c=candles[ctx.dataIndex];
           return c?['O:'+c.o,'H:'+c.h,'L:'+c.l,'C:'+c.c]:[];
-        }}}
+        }}},
       },
       scales:{
         x:{ticks:{display:true,color:'#a0c0e0',font:{size:11,family:'Space Mono'},maxTicksLimit:4,

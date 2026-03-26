@@ -1205,9 +1205,11 @@ async function connectAll(){
   }
 
   showSettingsStatus('MT5に接続中...','info');
+  console.log('[MT5接続] 開始');
   var ok = await fetchMT5Data();
   if(ok){
     mt5Connected=true;
+    console.log('[MT5接続] 成功 mt5Connected:', mt5Connected);
     updateBadge(true);
     showSettingsStatus('MT5接続成功！','ok');
     if(mt5Timer) clearInterval(mt5Timer);
@@ -1219,6 +1221,7 @@ async function connectAll(){
     loadChart(currentTf); // MT5接続完了後にMT5データでチャートを再読み込み
     setTimeout(closeSettings,1200);
   } else {
+    console.log('[MT5接続] 失敗 fetchMT5Dataがfalseを返しました');
     showSettingsStatus('接続失敗。TokenとAccount IDを確認してください','err');
   }
 }
@@ -1389,7 +1392,7 @@ async function fetchMT5Data(){
       brokerTimeOffset = 0;
     }
     return true;
-  } catch(e){ return false; }
+  } catch(e){ console.log('[MT5接続] 失敗', e); return false; }
 }
 
 async function fetchLivePrice(){

@@ -1984,6 +1984,15 @@ function applyEntryLine(){
 }
 
 // ══ TOUCH ZOOM ══
+var _rafPending = false;
+function scheduleChartUpdate() {
+  if(_rafPending) return;
+  _rafPending = true;
+  requestAnimationFrame(function() {
+    _rafPending = false;
+    if(chartInstance) chartInstance.update('none');
+  });
+}
 var _tz={isPan:false,startX:0,lastX:0,pinchDist:0,pinchRange:0,vMin:0,vMax:0};
 function initTouchZoom(){
   var c=document.getElementById('mainChart');
@@ -2011,7 +2020,7 @@ function initTouchZoom(){
       _tz.vMax=Math.min(total-1,_tz.vMax+shift);
       x.options.min=_tz.vMin;x.options.max=_tz.vMax;
       fitYAxis(_tz.vMin,_tz.vMax);
-      chartInstance.update('none');
+      scheduleChartUpdate();
     } else if(e.touches.length===2){
       var dx2=e.touches[0].clientX-e.touches[1].clientX;
       var dy2=e.touches[0].clientY-e.touches[1].clientY;
@@ -2023,7 +2032,7 @@ function initTouchZoom(){
       _tz.vMax=Math.min(total-1,center+range/2);
       x.options.min=_tz.vMin;x.options.max=_tz.vMax;
       fitYAxis(_tz.vMin,_tz.vMax);
-      chartInstance.update('none');
+      scheduleChartUpdate();
     }
     e.preventDefault();
   },{passive:false});
@@ -2068,7 +2077,7 @@ function initTouchZoom(){
     var newMax=Math.min(total-1,_mouse.vMax+shift);
     x.options.min=newMin; x.options.max=newMax;
     fitYAxis(newMin,newMax);
-    chartInstance.update('none');
+    scheduleChartUpdate();
   });
   window.addEventListener('mouseup',function(){
     _mouse.isDragging=false;

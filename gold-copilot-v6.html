@@ -9,7 +9,7 @@
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#080c12">
 <link rel="apple-touch-icon" href="icon-192.png">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<!-- Chart.js removed: Canvas直接描画に移行 -->
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&display=swap');
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
@@ -755,9 +755,7 @@ function initChartSize() {
   var dpr = window.devicePixelRatio || 1;
   canvas.width = vw * dpr;
   canvas.height = chartH * dpr;
-  if(chartInstance) {
-    chartInstance.resize();
-  }
+  if(_cv.candles && _cv.candles.length) redrawChart();
 }
 
 // ══ LOAD CHART ══
@@ -891,229 +889,186 @@ function generateDemo(tf, count) {
 }
 
 // ══ BUILD CHART ══
+// ══ CANVAS CHART ══
+var _cv = { candles:[], lines:[], vMin:0, vMax:0, yMin:0, yMax:0 };
+
+function calcMA(data, p) {
+  return data.map(function(_,i){
+    if(i<p-1) return null;
+    return data.slice(i-p+1,i+1).reduce(function(a,b){return a+b;},0)/p;
+  });
+}
+
+function _fitY(i0, i1) {
+  i0 = Math.max(0, Math.floor(i0));
+  i1 = Math.min(_cv.candles.length-1, Math.ceil(i1));
+  var ls=[], hs=[];
+  for(var i=i0; i<=i1; i++){
+    var c=_cv.candles[i];
+    if(c && c.l>100){ ls.push(c.l); hs.push(c.h); }
+  }
+  if(!ls.length) return;
+  overlayLines.concat(entryLines).forEach(function(l){
+    if(l.price>1000 && l.price<100000){ ls.push(l.price); hs.push(l.price); }
+  });
+  _cv.yMin = Math.min.apply(null,ls)*0.9994;
+  _cv.yMax = Math.max.apply(null,hs)*1.0006;
+}
+
 function buildChart(candles, lines) {
+  _cv.candles = candles;
+  _cv.lines = lines;
+  _cv.vMin = 0;
+  _cv.vMax = candles.length-1;
+  _fitY(0, candles.length-1);
+  chartInstance = {
+    update: function(){ redrawChart(); },
+    destroy: function(){},
+    resize: function(){ redrawChart(); }
+  };
+  redrawChart();
+  updateDowBadge(calcDowTheory(candles));
+}
+
+function redrawChart() {
   var canvas = document.getElementById('mainChart');
+  if(!canvas || !_cv.candles.length) return;
+  var dpr = window.devicePixelRatio||1;
+  var W = canvas.width/dpr, H = canvas.height/dpr;
   var ctx = canvas.getContext('2d');
-  if(chartInstance){ chartInstance.destroy(); chartInstance=null; }
+  var candles=_cv.candles, lines=_cv.lines;
+  var padL=8, padR=64, padT=8, padB=36;
+  var plotW=W-padL-padR, plotH=H-padT-padB;
+  var vMin=_cv.vMin, vMax=_cv.vMax, yMin=_cv.yMin, yMax=_cv.yMax;
+  if(vMax<=vMin || yMax<=yMin) return;
 
-  var lows = candles.map(function(c){return c.l;});
-  var highs = candles.map(function(c){return c.h;});
-  var closes = candles.map(function(c){return c.c;});
+  function xOf(idx){ return padL+(idx-vMin)/(vMax-vMin)*plotW; }
+  function yOf(p){ return padT+(1-(p-yMin)/(yMax-yMin))*plotH; }
 
-  // Y軸範囲をローソク足+ラインを含めて計算
-  var allPrices = lows.concat(highs).filter(function(v){
-    return v > 1000 && v < 100000 && !isNaN(v);
-  });
+  ctx.save();
+  ctx.scale(dpr, dpr);
+  ctx.clearRect(0, 0, W, H);
+
+  // グリッド
+  ctx.strokeStyle='rgba(30,45,68,0.5)'; ctx.lineWidth=0.5;
+  for(var gi=0; gi<=6; gi++){
+    var gy=padT+gi/6*plotH;
+    ctx.beginPath(); ctx.moveTo(padL,gy); ctx.lineTo(padL+plotW,gy); ctx.stroke();
+  }
+  for(var gxi=0; gxi<=4; gxi++){
+    var gx=padL+gxi/4*plotW;
+    ctx.beginPath(); ctx.moveTo(gx,padT); ctx.lineTo(gx,padT+plotH); ctx.stroke();
+  }
+
+  // S/Rライン + ラベル
   lines.forEach(function(l){
-    if(l.price > 1000 && l.price < 100000) allPrices.push(l.price);
-  });
-  var yAxisMin = Math.min.apply(null, allPrices) * 0.9994;
-  var yAxisMax = Math.max.apply(null, allPrices) * 1.0006;
-
-  // c.tをJSTに変換して表示（brokerTimeはUTC→c.tはUTCms）
-  var labels = candles.map(function(c){
-    var d = new Date(c.t);
-    if(currentTf==='1D'||currentTf==='1W'){
-      return d.toLocaleDateString('ja-JP',{month:'2-digit',day:'2-digit',timeZone:'Asia/Tokyo'});
+    if(!l.price||l.price<1000) return;
+    var y=yOf(l.price);
+    if(y<padT||y>padT+plotH) return;
+    ctx.save();
+    ctx.strokeStyle=l.color||'#888'; ctx.lineWidth=l.width||1.5;
+    if(l.dash&&l.dash.length) ctx.setLineDash(l.dash);
+    ctx.beginPath(); ctx.moveTo(padL,y); ctx.lineTo(padL+plotW,y); ctx.stroke();
+    ctx.setLineDash([]);
+    if(l.label){
+      ctx.font='10px Space Mono,monospace';
+      var tw=ctx.measureText(l.label).width;
+      ctx.fillStyle='rgba(8,12,18,0.8)';
+      ctx.fillRect(padL+4,y-14,tw+8,14);
+      ctx.fillStyle=l.color||'#888';
+      ctx.textAlign='left'; ctx.textBaseline='bottom';
+      ctx.fillText(l.label,padL+8,y-2);
     }
-    var dateStr = d.toLocaleDateString('ja-JP',{month:'2-digit',day:'2-digit',timeZone:'Asia/Tokyo'});
-    var timeStr = d.toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit',timeZone:'Asia/Tokyo'});
-    return dateStr + ' ' + timeStr;
+    ctx.restore();
   });
 
-  var upC='rgba(0,217,126,0.85)', dnC='rgba(255,77,106,0.85)';
-  var barColors = candles.map(function(c){return c.c>=c.o?upC:dnC;});
+  // MA20 / MA50
+  var i0=Math.max(0,Math.floor(vMin)), i1=Math.min(candles.length-1,Math.ceil(vMax));
+  var closes=candles.map(function(c){return c.c;});
+  var ma20=calcMA(closes,20), ma50=calcMA(closes,50);
+  function drawMA(arr,color){
+    ctx.save(); ctx.strokeStyle=color; ctx.lineWidth=1.5;
+    ctx.beginPath(); var started=false;
+    for(var i=i0;i<=i1;i++){
+      if(arr[i]==null){started=false;continue;}
+      var x=xOf(i),y=yOf(arr[i]);
+      if(!started){ctx.moveTo(x,y);started=true;}else{ctx.lineTo(x,y);}
+    }
+    ctx.stroke(); ctx.restore();
+  }
+  drawMA(ma20,'#f0b429');
+  drawMA(ma50,'#3d8bff');
 
-  function calcMA(data, p){
-    return data.map(function(_,i){
-      if(i<p-1)return null;
-      return +(data.slice(i-p+1,i+1).reduce(function(a,b){return a+b;},0)/p).toFixed(2);
+  // ローソク足
+  var candleW=Math.max(1,plotW/(vMax-vMin+1)*0.7);
+  for(var ci=i0;ci<=i1;ci++){
+    var c=candles[ci]; if(!c) continue;
+    var cx=xOf(ci);
+    var isBull=c.c>=c.o;
+    var col=isBull?'rgba(0,217,126,0.85)':'rgba(255,77,106,0.85)';
+    // ヒゲ（high-low）
+    ctx.strokeStyle=col; ctx.lineWidth=Math.max(1,candleW*0.15);
+    ctx.beginPath(); ctx.moveTo(cx,yOf(c.h)); ctx.lineTo(cx,yOf(c.l)); ctx.stroke();
+    // 実体（open-close）
+    var bTop=yOf(Math.max(c.o,c.c)), bBot=yOf(Math.min(c.o,c.c));
+    ctx.fillStyle=col;
+    ctx.fillRect(cx-candleW/2,bTop,candleW,Math.max(1,bBot-bTop));
+  }
+
+  // BUY/SELLマーク
+  if(tradeMarks&&tradeMarks.length){
+    var csStart=candles[i0]?candles[i0].t:0, csEnd=candles[i1]?candles[i1].t:0;
+    tradeMarks.forEach(function(deal){
+      var dtRaw=deal.brokerTime||deal.time; if(!dtRaw) return;
+      var dt=typeof dtRaw==='string'&&dtRaw.includes(' ')
+        ?new Date(dtRaw.replace(' ','T')+'Z').getTime():new Date(dtRaw).getTime();
+      if(isNaN(dt)||dt<csStart||dt>csEnd) return;
+      var ci2=i0,minD=Infinity;
+      for(var di=i0;di<=i1;di++){var d2=Math.abs(candles[di].t-dt);if(d2<minD){minD=d2;ci2=di;}}
+      var mx=xOf(ci2);
+      var pr=parseFloat(deal.price||deal.p||0);
+      if(pr<=0||pr<yMin||pr>yMax) return;
+      var my=yOf(pr), isBuy=deal.type==='DEAL_TYPE_BUY';
+      ctx.save(); ctx.font='bold 12px Space Mono,monospace'; ctx.textAlign='center';
+      if(isBuy){
+        ctx.fillStyle='#00d97e'; ctx.fillText('▲',mx,my+18);
+        ctx.font='8px Space Mono,monospace'; ctx.fillText(pr.toFixed(0),mx,my+28);
+      }else{
+        ctx.fillStyle='#ff4d6a'; ctx.fillText('▽',mx,my-8);
+        ctx.font='8px Space Mono,monospace'; ctx.fillText(pr.toFixed(0),mx,my-18);
+      }
+      ctx.restore();
     });
   }
 
-  // S/Rライン・建値ラインをdatasetとして追加（annotationsプラグイン不要）
-  var lineDatasets = lines.map(function(l){
-    // 全データポイントに同じ価格を設定（水平線）
-    var lineData = candles.map(function(){ return l.price; });
-    return {
-      type:'line',
-      label:l.label||'',
-      data:lineData,
-      borderColor:l.color,
-      borderWidth:l.width||1.5,
-      borderDash:l.dash||[],
-      pointRadius:0,
-      tension:0,
-      fill:false,
-      spanGaps:true,
-    };
-  });
+  // Y軸（右）
+  ctx.save(); ctx.fillStyle='#4a6080'; ctx.font='9px Space Mono,monospace';
+  ctx.textAlign='left'; ctx.textBaseline='middle';
+  for(var yi=0;yi<=6;yi++){
+    var py=padT+yi/6*plotH, pv=yMax-yi/6*(yMax-yMin);
+    ctx.fillText(pv.toFixed(2),padL+plotW+4,py);
+  }
+  ctx.restore();
 
-  chartInstance = new Chart(ctx, {
-    type:'bar',
-    plugins:[{
-      id:'candleBody',
-      afterDraw:function(chart){
-        var xScale=chart.scales.x, yScale=chart.scales.y;
-        if(!xScale||!yScale) return;
-        var ctx2=chart.ctx;
-        var meta=chart.getDatasetMeta(0);
-        if(!meta||!meta.data||!meta.data.length) return;
-        candles.forEach(function(c,i){
-          var bar=meta.data[i];
-          if(!bar) return;
-          var barW=bar.width||10;
-          var x=bar.x;
-          var yO=yScale.getPixelForValue(c.o);
-          var yC=yScale.getPixelForValue(c.c);
-          var top=Math.min(yO,yC);
-          var h=Math.abs(yO-yC);
-          if(h<1) h=1;
-          var isBull=c.c>=c.o;
-          ctx2.fillStyle=isBull?'rgba(0,217,126,0.85)':'rgba(255,77,106,0.85)';
-          ctx2.fillRect(x-barW/2, top, barW, h);
-        });
-      }
-    }],
-    data:{
-      labels:labels,
-      datasets:[
-        {type:'bar',label:'OHLC',data:candles.map(function(c){return[c.l,c.h];}),
-         backgroundColor:barColors,borderColor:barColors,borderWidth:1,
-         barPercentage:0.5,categoryPercentage:0.8},
-        {type:'line',label:'Close',data:closes,
-         borderColor:'rgba(200,220,255,0.4)',borderWidth:1,pointRadius:0,tension:0.1,fill:false},
-        {type:'line',label:'MA20',data:calcMA(closes,20),
-         borderColor:'#f0b429',borderWidth:1.5,pointRadius:0,tension:0.3,fill:false,spanGaps:true},
-        {type:'line',label:'MA50',data:calcMA(closes,50),
-         borderColor:'#3d8bff',borderWidth:1.5,pointRadius:0,tension:0.3,fill:false,spanGaps:true},
-      ].concat(lineDatasets)
-    },
-    options:{
-      responsive:false,
-      animation:{duration:150,easing:"easeOutQuart"},
-      layout:{padding:{bottom:20}},
-      plugins:{
-        legend:{display:false},
-        tooltip:{callbacks:{label:function(ctx){
-          var c=candles[ctx.dataIndex];
-          return c?['O:'+c.o,'H:'+c.h,'L:'+c.l,'C:'+c.c]:[];
-        }}},
-      },
-      scales:{
-        x:{ticks:{display:true,color:'#a0c0e0',font:{size:11,family:'Space Mono'},maxTicksLimit:4,
-             padding:10,maxRotation:0,autoSkip:true,autoSkipPadding:20},
-           grid:{color:'rgba(30,45,68,0.5)'}},
-        y:{position:'right',
-           min:yAxisMin,
-           max:yAxisMax,
-           ticks:{color:'#4a6080',font:{size:9,family:'Space Mono'},maxTicksLimit:8,
-                  callback:function(v){return v.toFixed(2);}},
-           grid:{color:'rgba(30,45,68,0.5)'}}
-      }
+  // X軸（下）
+  ctx.save(); ctx.fillStyle='#a0c0e0'; ctx.font='11px Space Mono,monospace';
+  ctx.textAlign='center'; ctx.textBaseline='top';
+  for(var xi=0;xi<=4;xi++){
+    var idx2=Math.round(vMin+xi/4*(vMax-vMin));
+    idx2=Math.max(0,Math.min(candles.length-1,idx2));
+    var cd=candles[idx2]; if(!cd) continue;
+    var d=new Date(cd.t), lbl;
+    if(currentTf==='1D'||currentTf==='1W'){
+      lbl=d.toLocaleDateString('ja-JP',{month:'2-digit',day:'2-digit',timeZone:'Asia/Tokyo'});
+    }else{
+      lbl=d.toLocaleDateString('ja-JP',{month:'2-digit',day:'2-digit',timeZone:'Asia/Tokyo'})
+         +' '+d.toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit',timeZone:'Asia/Tokyo'});
     }
-  });
+    ctx.fillText(lbl,xOf(idx2),padT+plotH+4);
+  }
+  ctx.restore();
 
-  // ライン上にラベルを描画（afterRenderフック）
-  chartInstance._lineLabels = lines;
-  var originalDraw = chartInstance.draw.bind(chartInstance);
-  chartInstance.draw = function() {
-    originalDraw();
-    drawLineLabels(chartInstance, lines);
-    drawTradeMarks(chartInstance, tradeMarks);
-  };
-
-  // ダウ理論バッジ更新
-  var _dowResult = calcDowTheory(candles);
-  updateDowBadge(_dowResult);
-}
-
-// ラインラベルをcanvasに直接描画
-function drawLineLabels(chart, lines) {
-  if(!lines || !lines.length) return;
-  var ctx2 = chart.ctx;
-  var yScale = chart.scales.y;
-  var xScale = chart.scales.x;
-  if(!yScale || !xScale) return;
-  lines.forEach(function(l) {
-    if(!l.label) return;
-    var yPos = yScale.getPixelForValue(l.price);
-    if(yPos < yScale.top || yPos > yScale.bottom) return;
-    ctx2.save();
-    ctx2.font = '10px Space Mono, monospace';
-    ctx2.fillStyle = l.color;
-    ctx2.textAlign = 'left';
-    ctx2.textBaseline = 'bottom';
-    var text = l.label;
-    var textWidth = ctx2.measureText(text).width;
-    // 背景
-    ctx2.fillStyle = 'rgba(8,12,18,0.8)';
-    ctx2.fillRect(xScale.left + 4, yPos - 14, textWidth + 8, 14);
-    // テキスト
-    ctx2.fillStyle = l.color;
-    ctx2.fillText(text, xScale.left + 8, yPos - 2);
-    ctx2.restore();
-  });
-}
-
-// BUY/SELLマークをcanvasに直接描画
-function drawTradeMarks(chart, deals) {
-  if(!deals || !deals.length || !chartData.length) return;
-  var ctx2 = chart.ctx;
-  var yScale = chart.scales.y;
-  var xScale = chart.scales.x;
-  if(!yScale || !xScale) return;
-
-  var chartStart = chartData[0].t;
-  var chartEnd = chartData[chartData.length-1].t;
-
-  deals.forEach(function(deal) {
-    var dtRaw = deal.brokerTime || deal.time;
-    if(!dtRaw) return;
-    var dealTime = typeof dtRaw === 'string' && dtRaw.includes(' ')
-      ? new Date(dtRaw.replace(' ','T')+'Z').getTime()
-      : new Date(dtRaw).getTime();
-    if(isNaN(dealTime)) return;
-    // チャート表示範囲外はスキップ
-    if(dealTime < chartStart || dealTime > chartEnd) return;
-
-    // 最も近いローソク足を探す
-    var closestIdx = 0, minDiff = Infinity;
-    chartData.forEach(function(c, i) {
-      var diff = Math.abs(c.t - dealTime);
-      if(diff < minDiff) { minDiff = diff; closestIdx = i; }
-    });
-
-    var xPos = xScale.getPixelForValue(closestIdx);
-    if(xPos < xScale.left || xPos > xScale.right) return;
-
-    var isBuy = deal.type === 'DEAL_TYPE_BUY';
-    var price = deal.price || parseFloat(deal.p) || 0;
-    price = parseFloat(price);
-    if(price <= 0) return;
-    var yMin = yScale.min || 0;
-    var yMax = yScale.max || 99999;
-    if(price < yMin || price > yMax) return;
-    var yPos = yScale.getPixelForValue(price);
-    if(yPos < yScale.top || yPos > yScale.bottom) return;
-
-    ctx2.save();
-    ctx2.font = 'bold 12px Space Mono, monospace';
-    ctx2.textAlign = 'center';
-
-    if(isBuy) {
-      ctx2.fillStyle = '#00d97e';
-      ctx2.fillText('▲', xPos, yPos + 18);
-      ctx2.font = '8px Space Mono, monospace';
-      ctx2.fillText(price.toFixed(0), xPos, yPos + 28);
-    } else {
-      ctx2.fillStyle = '#ff4d6a';
-      ctx2.fillText('▽', xPos, yPos - 8);
-      ctx2.font = '8px Space Mono, monospace';
-      ctx2.fillText(price.toFixed(0), xPos, yPos - 18);
-    }
-    ctx2.restore();
-  });
+  ctx.restore(); // DPR scale
 }
 
 // ══ HEADER PRICE ══
@@ -1320,19 +1275,7 @@ function updateCurrentCandle(price) {
   if(candleStart > lastCandle.t + tfDuration * 0.5) {
     var newCandle = {t: candleStart, o: price, h: price, l: price, c: price, bt: ''};
     chartData.push(newCandle);
-    var d = new Date(candleStart);
-    var label = (d.getUTCMonth()+1).toString().padStart(2,'0') + '/' +
-      d.getUTCDate().toString().padStart(2,'0') + ' ' +
-      d.getUTCHours().toString().padStart(2,'0') + ':' +
-      d.getUTCMinutes().toString().padStart(2,'0');
-    chartInstance.data.labels.push(label);
-    var upC='rgba(0,217,126,0.85)';
-    chartInstance.data.datasets[0].data.push([price, price]);
-    if(Array.isArray(chartInstance.data.datasets[0].backgroundColor)) {
-      chartInstance.data.datasets[0].backgroundColor.push(upC);
-      chartInstance.data.datasets[0].borderColor.push(upC);
-    }
-    if(chartInstance.data.datasets[1]) chartInstance.data.datasets[1].data.push(price);
+    _cv.candles = chartData;
     currentCandleData = newCandle;
     currentCandleStartTime = candleStart;
   } else {
@@ -1345,16 +1288,12 @@ function updateCurrentCandle(price) {
     if(price < currentCandleData.l) currentCandleData.l = price;
   }
 
-  var idx = chartData.length - 1;
-  var upC2='rgba(0,217,126,0.85)', dnC2='rgba(255,77,106,0.85)';
-  var color2 = currentCandleData.c >= currentCandleData.o ? upC2 : dnC2;
-  chartInstance.data.datasets[0].data[idx] = [currentCandleData.l, currentCandleData.h];
-  if(Array.isArray(chartInstance.data.datasets[0].backgroundColor)) {
-    chartInstance.data.datasets[0].backgroundColor[idx] = color2;
-    chartInstance.data.datasets[0].borderColor[idx] = color2;
+  // ビューが末尾に近ければY軸・vMaxも更新
+  if(_cv.vMax >= _cv.candles.length - 2) {
+    _cv.vMax = _cv.candles.length - 1;
+    _fitY(_cv.vMin, _cv.vMax);
   }
-  if(chartInstance.data.datasets[1]) chartInstance.data.datasets[1].data[idx] = price;
-  chartInstance.update('none');
+  scheduleChartUpdate();
   updateDowBadge(calcDowTheory(chartData));
   if(mt5Positions.length > 0) refreshPositionPnL(price);
 }
@@ -2026,36 +1965,39 @@ function scheduleChartUpdate() {
   _rafPending = true;
   requestAnimationFrame(function() {
     _rafPending = false;
-    if(chartInstance) chartInstance.update('none');
+    redrawChart();
   });
 }
-var _tz={isPan:false,startX:0,lastX:0,pinchDist:0,pinchRange:0,vMin:0,vMax:0};
+var _tz={isPan:false,lastX:0,pinchDist:0,pinchRange:0,vMin:0,vMax:0};
 function initTouchZoom(){
   var c=document.getElementById('mainChart');
+
   c.addEventListener('touchstart',function(e){
     if(e.touches.length===1){
-      _tz.isPan=true;_tz.startX=e.touches[0].clientX;_tz.lastX=e.touches[0].clientX;
-      if(chartInstance){var x=chartInstance.scales.x;_tz.vMin=x.min;_tz.vMax=x.max;}
+      _tz.isPan=true; _tz.lastX=e.touches[0].clientX;
+      _tz.vMin=_cv.vMin; _tz.vMax=_cv.vMax;
     } else if(e.touches.length===2){
       _tz.isPan=false;
       var dx=e.touches[0].clientX-e.touches[1].clientX;
       var dy=e.touches[0].clientY-e.touches[1].clientY;
       _tz.pinchDist=Math.sqrt(dx*dx+dy*dy);
-      if(chartInstance){var x=chartInstance.scales.x;_tz.vMin=x.min;_tz.vMax=x.max;_tz.pinchRange=x.max-x.min;}
+      _tz.vMin=_cv.vMin; _tz.vMax=_cv.vMax;
+      _tz.pinchRange=_cv.vMax-_cv.vMin;
     }
     e.preventDefault();
   },{passive:false});
+
   c.addEventListener('touchmove',function(e){
-    if(!chartInstance||!chartData.length) return;
-    var x=chartInstance.scales.x,total=chartData.length;
+    if(!_cv.candles.length) return;
+    var total=_cv.candles.length;
     if(e.touches.length===1&&_tz.isPan){
-      var dx=e.touches[0].clientX-_tz.lastX;_tz.lastX=e.touches[0].clientX;
+      var dx=e.touches[0].clientX-_tz.lastX; _tz.lastX=e.touches[0].clientX;
       var range=_tz.vMax-_tz.vMin;
       var shift=-dx/c.offsetWidth*range;
       _tz.vMin=Math.max(0,_tz.vMin+shift);
       _tz.vMax=Math.min(total-1,_tz.vMax+shift);
-      x.options.min=_tz.vMin;x.options.max=_tz.vMax;
-      fitYAxis(_tz.vMin,_tz.vMax);
+      _cv.vMin=_tz.vMin; _cv.vMax=_tz.vMax;
+      _fitY(_cv.vMin,_cv.vMax);
       scheduleChartUpdate();
     } else if(e.touches.length===2){
       var dx2=e.touches[0].clientX-e.touches[1].clientX;
@@ -2064,91 +2006,65 @@ function initTouchZoom(){
       var scale=_tz.pinchDist/dist;
       var range=Math.max(5,Math.min(total,_tz.pinchRange*scale));
       var center=(_tz.vMin+_tz.vMax)/2;
-      _tz.vMin=Math.max(0,center-range/2);
-      _tz.vMax=Math.min(total-1,center+range/2);
-      x.options.min=_tz.vMin;x.options.max=_tz.vMax;
-      fitYAxis(_tz.vMin,_tz.vMax);
+      _cv.vMin=Math.max(0,center-range/2);
+      _cv.vMax=Math.min(total-1,center+range/2);
+      _fitY(_cv.vMin,_cv.vMax);
       scheduleChartUpdate();
     }
     e.preventDefault();
   },{passive:false});
+
   c.addEventListener('touchend',function(){_tz.isPan=false;});
 
-  // ── PCマウスホイールズーム ──
+  // ── ホイールズーム ──
   c.addEventListener('wheel',function(e){
     e.preventDefault();
-    if(!chartInstance||!chartData.length) return;
-    var x=chartInstance.scales.x;
-    var total=chartData.length;
-    var curMin=x.options.min!==undefined?x.options.min:0;
-    var curMax=x.options.max!==undefined?x.options.max:total-1;
-    var range=curMax-curMin;
+    if(!_cv.candles.length) return;
+    var total=_cv.candles.length;
+    var range=_cv.vMax-_cv.vMin;
     var factor=e.deltaY>0?1.15:0.87;
     var newRange=Math.max(5,Math.min(total,range*factor));
-    var center=(curMin+curMax)/2;
-    var newMin=Math.max(0,center-newRange/2);
-    var newMax=Math.min(total-1,center+newRange/2);
-    x.options.min=newMin; x.options.max=newMax;
-    _tz.vMin=newMin; _tz.vMax=newMax;
-    fitYAxis(newMin,newMax);
-    chartInstance.update('none');
+    var center=(_cv.vMin+_cv.vMax)/2;
+    _cv.vMin=Math.max(0,center-newRange/2);
+    _cv.vMax=Math.min(total-1,center+newRange/2);
+    _fitY(_cv.vMin,_cv.vMax);
+    redrawChart();
   },{passive:false});
 
-  // ── PCマウスドラッグパン ──
+  // ── マウスドラッグパン ──
   var _mouse={isDragging:false,startX:0,vMin:0,vMax:0};
   c.addEventListener('mousedown',function(e){
-    _mouse.isDragging=true;
-    _mouse.startX=e.clientX;
-    if(chartInstance){var x=chartInstance.scales.x;_mouse.vMin=x.options.min||0;_mouse.vMax=x.options.max||chartData.length-1;}
+    _mouse.isDragging=true; _mouse.startX=e.clientX;
+    _mouse.vMin=_cv.vMin; _mouse.vMax=_cv.vMax;
     c.style.cursor='grabbing';
   });
   window.addEventListener('mousemove',function(e){
-    if(!_mouse.isDragging||!chartInstance||!chartData.length) return;
-    var x=chartInstance.scales.x;
-    var total=chartData.length;
+    if(!_mouse.isDragging||!_cv.candles.length) return;
+    var total=_cv.candles.length;
     var range=_mouse.vMax-_mouse.vMin;
-    var dx=e.clientX-_mouse.startX;
-    var shift=-dx/c.offsetWidth*range;
-    var newMin=Math.max(0,_mouse.vMin+shift);
-    var newMax=Math.min(total-1,_mouse.vMax+shift);
-    x.options.min=newMin; x.options.max=newMax;
-    fitYAxis(newMin,newMax);
+    var shift=-(e.clientX-_mouse.startX)/c.offsetWidth*range;
+    _cv.vMin=Math.max(0,_mouse.vMin+shift);
+    _cv.vMax=Math.min(total-1,_mouse.vMax+shift);
+    _fitY(_cv.vMin,_cv.vMax);
     scheduleChartUpdate();
   });
   window.addEventListener('mouseup',function(){
-    _mouse.isDragging=false;
-    c.style.cursor='crosshair';
+    _mouse.isDragging=false; c.style.cursor='crosshair';
   });
   c.style.cursor='crosshair';
 
-  // ダブルクリックでリセット（PC）
-  c.addEventListener('dblclick',function(){
-    if(chartInstance){
-      chartInstance.scales.x.options.min=undefined;
-      chartInstance.scales.x.options.max=undefined;
-      var allP=[].concat(chartData.map(function(d){return d.l;}),chartData.map(function(d){return d.h;}));
-      overlayLines.concat(entryLines).forEach(function(l){if(l.price>0)allP.push(l.price);});
-      chartInstance.options.scales.y.min=Math.min.apply(null,allP)*0.9994;
-      chartInstance.options.scales.y.max=Math.max.apply(null,allP)*1.0006;
-      chartInstance.update('none');
-    }
-  });
-
-  // ダブルタップでリセット
+  // ── ダブルクリック/ダブルタップでリセット ──
+  function resetView(){
+    if(!_cv.candles.length) return;
+    _cv.vMin=0; _cv.vMax=_cv.candles.length-1;
+    _fitY(_cv.vMin,_cv.vMax);
+    redrawChart();
+  }
+  c.addEventListener('dblclick',resetView);
   var lastTap=0;
   c.addEventListener('touchend',function(){
     var now=Date.now();
-    if(now-lastTap<300){
-      if(chartInstance){
-        chartInstance.scales.x.options.min=undefined;
-        chartInstance.scales.x.options.max=undefined;
-        var l=chartData.map(function(c){return c.l;});
-        var h=chartData.map(function(c){return c.h;});
-        chartInstance.options.scales.y.min=Math.min.apply(null,l)*0.9995;
-        chartInstance.options.scales.y.max=Math.max.apply(null,h)*1.0005;
-        chartInstance.update('none');
-      }
-    }
+    if(now-lastTap<300) resetView();
     lastTap=now;
   });
 }
@@ -2483,18 +2399,8 @@ function updateDowBadge(dow) {
 }
 
 function fitYAxis(minIdx,maxIdx){
-  var i0=Math.max(0,Math.floor(minIdx)),i1=Math.min(chartData.length-1,Math.ceil(maxIdx));
-  var ls=[],hs=[];
-  for(var i=i0;i<=i1;i++){
-    if(chartData[i] && chartData[i].l > 100){ls.push(chartData[i].l);hs.push(chartData[i].h);}
-  }
-  if(!ls.length)return;
-  // 建値ライン・S/Rラインも範囲に含める
-  overlayLines.concat(entryLines).forEach(function(l){
-    if(l.price > 1000 && l.price < 100000){ls.push(l.price);hs.push(l.price);}
-  });
-  chartInstance.options.scales.y.min=Math.min.apply(null,ls)*0.9994;
-  chartInstance.options.scales.y.max=Math.max.apply(null,hs)*1.0006;
+  _cv.vMin=minIdx; _cv.vMax=maxIdx;
+  _fitY(minIdx,maxIdx);
 }
 </script>
 <script>

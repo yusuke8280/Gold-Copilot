@@ -1772,9 +1772,9 @@ async function analyzeWithClaude(){
 
 【チャートデータ】
 - 時間足: ${currentTf}分足
-- 現在価格: ${lastPrice}（リアルタイム価格・最優先）
-- チャート最終値: ${chartData[chartData.length-1].c}
-- ※現在価格を基準にTP/SL/エントリーを計算してください
+- 現在のリアルタイム価格: ${lastPrice}
+- ※エントリー・TP・SLは必ずこの価格を基準に計算すること
+- ※chartDataの最終値（${chartData[chartData.length-1].c}）は参考値
 - RSI(14): ${currentRsi}
 - MA20: ${ma20.toFixed(2)}
 - MA50: ${ma50.toFixed(2)}
@@ -1907,9 +1907,11 @@ function renderAI(r){
     reasonHtml += '</div>';
     html += reasonHtml;
   }
+  // エントリー価格はリアルタイム価格を表示
+  var displayEntry = lastPrice > 0 ? lastPrice.toFixed(2) : (r.entry || '-');
   // エントリー
   html+='<div class="entry-card">'
-    +entryRow('エントリー',r.entry,'')
+    +entryRow('エントリー',displayEntry,'')
     +entryRow('TP（利確）',r.tp,'color:var(--green)')
     +entryRow('SL（損切）',r.sl,'color:var(--red)')
     +entryRow('RR比',rrText,'')

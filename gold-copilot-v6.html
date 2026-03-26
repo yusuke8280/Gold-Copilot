@@ -815,6 +815,7 @@ async function fetchMetaApiCandles(tf, count) {
     var data = await res.json();
     if(!Array.isArray(data) || !data.length) return null;
     console.log('[MetaApi] 取得件数:', data.length, '最初:', data[0].brokerTime, '最後:', data[data.length-1].brokerTime);
+    console.log('[MetaApi] 最新データ 最後の1本:', JSON.stringify(data[data.length-1]));
     console.log('[MetaApi] 生データ 最初の3本:', data.slice(0,3).map(function(v){
       return {time:v.time, brokerTime:v.brokerTime, open:v.open, high:v.high, low:v.low, close:v.close};
     }));

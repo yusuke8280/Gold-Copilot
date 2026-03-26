@@ -812,16 +812,9 @@ async function fetchMetaApiCandles(tf, count) {
     if(!Array.isArray(data) || !data.length) return null;
     console.log('[MetaApi] 最初のローソク足（生データ）:', JSON.stringify(data[0], null, 2));
     return data.map(function(v){
-      var bt = v.brokerTime || '';
-      var t;
-      if(bt){
-        // brokerTimeはUTCなのでZを付けてUTCとして解釈
-        t = new Date(bt.replace(' ','T')+'Z').getTime();
-      } else {
-        t = new Date(v.time).getTime();
-      }
       return {
-        t: t, bt: bt,
+        t: new Date(v.time).getTime(),
+        bt: v.brokerTime,
         o: +v.open, h: +v.high, l: +v.low, c: +v.close
       };
     }).sort(function(a,b){return a.t-b.t;}).slice(-count); // 新しいcount件だけ使う

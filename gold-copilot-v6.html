@@ -804,37 +804,60 @@ async function fetchMetaApiCandles(tf, count) {
   var secMap = {'1':60,'5':300,'15':900,'60':3600,'240':14400,'1D':86400,'1W':604800};
   var tfMs = (secMap[tf] || 900) * 1000;
   var startTime = new Date(Date.now() - count * tfMs * 2).toISOString();
-  var url = 'https://mt-client-api-v1.london.agiliumtrade.ai/users/current/accounts/'
-    + MT5_ACCOUNT_ID + '/history-candles/symbols/XAUUSDs/timeframes/'
+  var headers = {'auth-token': MT5_TOKEN};
+
+  // ① 過去データ（複数本）
+  var histUrl = 'https://mt-market-data-client-api-v1.london.agiliumtrade.ai/users/current/accounts/'
+    + MT5_ACCOUNT_ID + '/historical-market-data/symbols/XAUUSDs/timeframes/'
     + timeframe + '/candles?startTime=' + encodeURIComponent(startTime) + '&limit=' + count;
-  console.log('[MetaApi] URL:', url);
+  console.log('[MetaApi] 過去データURL:', histUrl);
+
+  // ② 現在のローソク足（1本）
+  var currentUrl = 'https://mt-client-api-v1.london.agiliumtrade.ai/users/current/accounts/'
+    + MT5_ACCOUNT_ID + '/symbols/XAUUSDs/current-candles/' + timeframe;
+  console.log('[MetaApi] 現在足URL:', currentUrl);
+
   try {
-    var res = await fetch(url, {headers:{'auth-token':MT5_TOKEN}});
-    if(!res.ok) {
-      console.log('[MetaApi] status:', res.status);
-      var errText = await res.text();
-      console.log('[MetaApi] error body:', errText);
+    // ①と②を並列取得
+    var [histRes, currentRes] = await Promise.all([
+      fetch(histUrl, {headers: headers}),
+      fetch(currentUrl, {headers: headers})
+    ]);
+
+    if(!histRes.ok) {
+      console.log('[MetaApi] 過去データ status:', histRes.status, await histRes.text());
       return null;
     }
-    var data = await res.json();
-    if(!Array.isArray(data) || !data.length) return null;
-    console.log('[MetaApi] 取得件数:', data.length, '最初:', data[0].brokerTime, '最後:', data[data.length-1].brokerTime);
-    console.log('[MetaApi] 最新データ 最後の1本:', JSON.stringify(data[data.length-1]));
-    console.log('[MetaApi] 生データ 最初の3本:', data.slice(0,3).map(function(v){
-      return {time:v.time, brokerTime:v.brokerTime, open:v.open, high:v.high, low:v.low, close:v.close};
-    }));
-    var mapped = data.map(function(v){
-      return {
-        t: new Date(v.time).getTime(),
-        bt: v.brokerTime,
-        o: +v.open, h: +v.high, l: +v.low, c: +v.close
-      };
-    }).sort(function(a,b){return a.t-b.t;}).slice(-count); // 新しいcount件だけ使う
-    console.log('[MetaApi] マッピング後 最初の3本:', mapped.slice(0,3).map(function(c){
-      return {t:new Date(c.t).toISOString(), bt:c.bt, o:c.o, h:c.h, l:c.l, c:c.c};
-    }));
+    var histData = await histRes.json();
+    if(!Array.isArray(histData) || !histData.length) return null;
+    console.log('[MetaApi] 取得件数:', histData.length, '最初:', histData[0].brokerTime, '最後:', histData[histData.length-1].brokerTime);
+
+    // ①をマッピング
+    var mapped = histData.map(function(v){
+      return {t: new Date(v.time).getTime(), bt: v.brokerTime, o: +v.open, h: +v.high, l: +v.low, c: +v.close};
+    }).sort(function(a,b){return a.t-b.t;}).slice(-count);
+
+    // ②の現在足を末尾に追加
+    if(currentRes.ok) {
+      var cur = await currentRes.json();
+      console.log('[MetaApi] 現在足:', JSON.stringify(cur));
+      if(cur && cur.open != null) {
+        var curCandle = {t: new Date(cur.time).getTime(), bt: cur.brokerTime, o: +cur.open, h: +cur.high, l: +cur.low, c: +cur.close};
+        // 同じ時刻の足が既にあれば置き換え、なければ追加
+        var last = mapped[mapped.length-1];
+        if(last && last.t === curCandle.t) {
+          mapped[mapped.length-1] = curCandle;
+        } else {
+          mapped.push(curCandle);
+        }
+        console.log('[MetaApi] 現在足を追加:', new Date(curCandle.t).toISOString(), 'o:', curCandle.o, 'h:', curCandle.h, 'l:', curCandle.l, 'c:', curCandle.c);
+      }
+    } else {
+      console.log('[MetaApi] 現在足 status:', currentRes.status, await currentRes.text());
+    }
+
     return mapped;
-  } catch(e) { return null; }
+  } catch(e) { console.log('[MetaApi] catch error:', e); return null; }
 }
 
 // ══ TWELVEDATA ══

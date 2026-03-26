@@ -317,30 +317,19 @@ canvas{display:block;width:100% !important;}
 @keyframes bar{from{height:8px;}to{height:24px;}}
 .loading-text{font-size:10px;color:var(--gold);letter-spacing:3px;}
 
-/* ── RSI METER ── */
-.rsi-gauge{
+/* ── DOW BADGE ── */
+.dow-badge{
   position:absolute;top:8px;left:8px;z-index:10;
   background:rgba(8,12,18,0.82);border:1px solid var(--border);
-  border-radius:8px;padding:5px 8px;pointer-events:none;width:130px;
+  border-radius:8px;padding:5px 10px;pointer-events:none;
 }
-.rsi-gauge-label{
+.dow-badge-trend{
   font-size:11px;font-weight:700;font-family:'Space Mono',monospace;
-  color:#e8f0ff;letter-spacing:1px;margin-bottom:3px;
+  letter-spacing:1px;
 }
-.rsi-gauge-bar{
-  position:relative;height:10px;border-radius:5px;overflow:hidden;
-  background:linear-gradient(to right,#ff4d6a 0%,#ff4d6a 30%,#2a3d55 30%,#2a3d55 70%,#00d97e 70%,#00d97e 100%);
-}
-.rsi-gauge-indicator{
-  position:absolute;top:-2px;width:3px;height:14px;
-  background:#e8f0ff;border-radius:2px;transform:translateX(-50%);
-  box-shadow:0 0 4px rgba(232,240,255,0.8);
-  transition:left 0.4s ease;
-}
-.rsi-gauge-sub{
-  display:flex;justify-content:space-between;
-  font-size:8px;color:var(--muted);margin-top:3px;
-  font-family:'Space Mono',monospace;
+.dow-badge-sub{
+  font-size:8px;color:var(--muted);margin-top:2px;
+  font-family:'Space Mono',monospace;letter-spacing:0.5px;
 }
 
 /* ── TRADE PANEL ── */
@@ -488,15 +477,10 @@ canvas{display:block;width:100% !important;}
     </div>
     <div class="loading-text">LOADING...</div>
   </div>
-  <!-- RSI ゲージ -->
-  <div class="rsi-gauge" id="rsiGauge">
-    <div class="rsi-gauge-label" id="rsiGaugeLabel">RSI --</div>
-    <div class="rsi-gauge-bar">
-      <div class="rsi-gauge-indicator" id="rsiGaugeIndicator" style="left:50%;"></div>
-    </div>
-    <div class="rsi-gauge-sub">
-      <span>売られすぎ</span><span>中立</span><span>買われすぎ</span>
-    </div>
+  <!-- ダウ理論バッジ -->
+  <div class="dow-badge" id="dowBadge">
+    <div class="dow-badge-trend" id="dowBadgeTrend" style="color:var(--muted);">DOW --</div>
+    <div class="dow-badge-sub" id="dowBadgeSub">スウィング分析中</div>
   </div>
 </div>
 
@@ -988,9 +972,9 @@ function buildChart(candles, lines) {
     drawTradeMarks(chartInstance, tradeMarks);
   };
 
-  // RSIメーター更新
-  var _closes = candles.map(function(c){ return c.c; });
-  updateRsiGauge(calcRSI(_closes, 14));
+  // ダウ理論バッジ更新
+  var _dowResult = calcDowTheory(candles);
+  updateDowBadge(_dowResult);
 }
 
 // ラインラベルをcanvasに直接描画
@@ -1316,9 +1300,7 @@ function updateCurrentCandle(price) {
   }
   if(chartInstance.data.datasets[1]) chartInstance.data.datasets[1].data[idx] = price;
   chartInstance.update('none');
-  var closes = chartData.map(function(c){return c.c;});
-  var rsi = calcRSI(closes, 14);
-  if(rsi !== null) updateRsiGauge(rsi);
+  updateDowBadge(calcDowTheory(chartData));
   if(mt5Positions.length > 0) refreshPositionPnL(price);
 }
 
@@ -1687,116 +1669,123 @@ async function analyzeChart(){
   // Claude APIで本格分析（Cloudflare Worker経由）
   await analyzeWithClaude();
   return;
-  // ルールベース分析（フォールバック）
-  var last=chartData[chartData.length-1];
-  var recent=chartData.slice(-20);
-  var highs=recent.map(function(c){return c.h;});
-  var lows=recent.map(function(c){return c.l;});
-  var closes=recent.map(function(c){return c.c;});
-  var maxH=Math.max.apply(null,highs), minL=Math.min.apply(null,lows);
-  var price=last.c;
+  // ルールベース分析（フォールバック・ダウ理論ベース）
+  var dow = calcDowTheory(chartData);
+  var last = chartData[chartData.length-1];
+  var price = lastPrice || last.c;
+  var atr = dow.atr;
 
-  // RSI
-  var gains=0,losses=0;
-  for(var i=1;i<closes.length;i++){
-    var d=closes[i]-closes[i-1];
-    if(d>0)gains+=d;else losses-=d;
+  var signal, strength;
+  if(dow.trend==='上昇トレンド'){ signal='BUY';  strength='中'; }
+  else if(dow.trend==='下降トレンド'){ signal='SELL'; strength='中'; }
+  else { signal='WAIT'; strength='弱'; }
+
+  var r1 = dow.resistanceLevels[0] || +(price*1.005).toFixed(2);
+  var r2 = dow.resistanceLevels[1] || +(price*1.010).toFixed(2);
+  var s1 = dow.supportLevels[0]    || +(price*0.995).toFixed(2);
+  var s2 = dow.supportLevels[1]    || +(price*0.990).toFixed(2);
+
+  var tp, sl;
+  if(signal==='BUY'){
+    tp = +(price + atr*2).toFixed(2);
+    sl = +(price - atr*1).toFixed(2);
+  } else if(signal==='SELL'){
+    tp = +(price - atr*2).toFixed(2);
+    sl = +(price + atr*1).toFixed(2);
+  } else {
+    tp = +(price + atr*1.5).toFixed(2);
+    sl = +(price - atr*1.5).toFixed(2);
   }
-  var rsi=losses===0?100:Math.round(100-100/(1+(gains/losses)));
-  var ma5=closes.slice(-5).reduce(function(a,b){return a+b;},0)/5;
-  var ma20=closes.reduce(function(a,b){return a+b;},0)/closes.length;
-  var trend=ma5>ma20?'上昇トレンド':ma5<ma20*0.998?'下降トレンド':'レンジ相場';
-  var rsiSig=rsi>70?'過買い':rsi<30?'過売り':'中立';
-  var signal=rsi>68?'SELL':rsi<32?'BUY':(trend==='上昇トレンド'?'BUY':trend==='下降トレンド'?'SELL':'WAIT');
-  var strength=Math.abs(rsi-50)>20?'強':Math.abs(rsi-50)>10?'中':'弱';
-  var r1=+(maxH*1.002).toFixed(2),r2=+(maxH*1.005).toFixed(2);
-  var s1=+(minL*0.998).toFixed(2),s2=+(minL*0.995).toFixed(2);
-  var chUp=+(maxH*1.003).toFixed(2),chLo=+(minL*0.997).toFixed(2);
-  var entry,tp,sl;
-  if(signal==='BUY'){entry=+(price*1.0002).toFixed(2);tp=+(price*1.008).toFixed(2);sl=+(s1*0.999).toFixed(2);}
-  else if(signal==='SELL'){entry=+(price*0.9998).toFixed(2);tp=+(price*0.992).toFixed(2);sl=+(r1*1.001).toFixed(2);}
-  else{entry=price;tp=+(price*1.006).toFixed(2);sl=+(price*0.994).toFixed(2);}
+  var rrNum = Math.abs(tp-price) / (Math.abs(sl-price)||1);
 
-  var analyses={
-    '上昇トレンド':'XAU/USDは上昇トレンドを維持しており、ダウ理論における高値・安値の切り上がりが確認できます。MA20がサポートとして機能しており押し目買いが有効です。チャネル上限付近では利食いを検討してください。',
-    '下降トレンド':'XAU/USDは下降トレンドにあり、高値・安値の切り下がりが継続しています。戻り売りが有効でレジスタンスでの売りエントリーを狙います。主要サポートの反応には注意してください。',
-    'レンジ相場':'XAU/USDは現在レンジ相場を形成しており、方向感が出るまで様子見が賢明です。S/Rの境界での反転を狙う戦略が有効ですがブレイクアウトの確認が必要です。'
+  var r = {
+    signal: signal, strength: strength,
+    dow_trend: dow.trend, dow_basis: dow.trendDetail,
+    entry_reason: [
+      'ダウ理論: '+dow.trendDetail,
+      signal==='BUY'?'押し目での買い':signal==='SELL'?'戻り売り':'様子見',
+      'ATR基準TP/SL設定'
+    ],
+    entry: price, tp: tp, sl: sl,
+    rr: '1:'+rrNum.toFixed(1),
+    sr: [
+      {label:'R1', price:r1}, {label:'R2', price:r2},
+      {label:'S1', price:s1}, {label:'S2', price:s2}
+    ],
+    analysis: dow.trend+'が継続中。'+dow.trendDetail+'を確認。ダウ理論に基づきエントリーを検討してください。',
+    warning: 'ルールベース分析です。必ず自己判断でトレードしてください。',
+    ma20: (function(){
+      var cls=chartData.slice(-20).map(function(c){return c.c;});
+      return cls.length?(cls.reduce(function(a,b){return a+b;},0)/cls.length).toFixed(2):'--';
+    })(),
+    atr: atr
   };
-  var actions={
-    'BUY':'S1（'+s1+'）付近での押し目を待ってロングエントリーを検討してください。TP '+tp+'・SL '+sl+' でリスク管理を徹底してください。',
-    'SELL':'R1（'+r1+'）付近での戻りを待ってショートエントリーを検討してください。TP '+tp+'・SL '+sl+' を設定し損切りを徹底してください。',
-    'WAIT':'トレンドの方向性が明確になるまで新規エントリーは控えてください。次の15〜30分の値動きを確認してから判断することを推奨します。'
-  };
-  var risks=rsi>65?'RSIが過熱圏に近づいているため追い買いは慎重に。':rsi<35?'RSIが売られすぎ水準に近づいており急反発リスクに注意。':'重要経済指標の発表タイミングには特に注意が必要です。';
 
-  var r={signal:signal,strength:strength,trend:trend,rsi:rsi,rsiSig:rsiSig,
-    r1:r1,r2:r2,s1:s1,s2:s2,chUp:chUp,chLo:chLo,
-    ma20:+ma20.toFixed(2),entry:entry,tp:tp,sl:sl,
-    analysis:analyses[trend]||analyses['レンジ相場'],
-    action:actions[signal]||actions['WAIT'],risk:risks};
-
-  analysisResult=r;
-
-  // チャートにラインを描画
-  overlayLines=[
-    {price:r.r1,color:'#ff4d6a',label:'R1',width:1.5,dash:[4,3]},
-    {price:r.r2,color:'#ff8099',label:'R2',width:1,dash:[4,3]},
-    {price:r.s1,color:'#00d97e',label:'S1',width:1.5,dash:[4,3]},
-    {price:r.s2,color:'#66ffbb',label:'S2',width:1,dash:[4,3]},
-    {price:r.chUp,color:'#f0b429',label:'CH↑',width:1,dash:[6,3]},
-    {price:r.chLo,color:'#f0b429',label:'CH↓',width:1,dash:[6,3]},
-  ].filter(function(l){ return l.price > 3000 && l.price < 10000; });
-  buildChart(chartData,overlayLines.concat(entryLines));
+  analysisResult = r;
+  overlayLines = r.sr.filter(function(l){return l.price>1000&&l.price<100000;}).map(function(s){
+    var colorMap={R1:'#ff4d6a',R2:'#ff8099',S1:'#00d97e',S2:'#66ffbb'};
+    return {price:s.price, color:colorMap[s.label]||'#f0b429', label:s.label, width:1.5, dash:[4,3]};
+  });
+  buildChart(chartData, overlayLines.concat(entryLines));
   renderAI(r);
 }
 
 // ── Claude AIによる本格分析 ──
 async function analyzeWithClaude(){
-  var last = chartData[chartData.length-1];
-  var recent = chartData.slice(-50);
-  var closes = recent.map(function(c){return c.c;});
-  var highs = recent.map(function(c){return c.h;});
-  var lows = recent.map(function(c){return c.l;});
-
-  var currentRsi = calcRSI(closes, 14);
-  var ma20 = closes.slice(-20).reduce(function(a,b){return a+b;},0)/20;
-  var ma50 = closes.reduce(function(a,b){return a+b;},0)/closes.length;
-  var recentHigh = Math.max.apply(null, highs.slice(-20));
-  var recentLow  = Math.min.apply(null, lows.slice(-20));
-  var recentCandles = chartData.slice(-20).map(function(c){
+  var dow = calcDowTheory(chartData);
+  var atr = dow.atr;
+  var recentCandles = chartData.slice(-30).map(function(c){
     return {o:c.o, h:c.h, l:c.l, c:c.c};
   });
+  var recentHighPrices = dow.recentHighs.map(function(s){return s.price;});
+  var recentLowPrices  = dow.recentLows.map(function(s){return s.price;});
+  var ma20 = (function(){
+    var cls = chartData.slice(-20).map(function(c){return c.c;});
+    return cls.length ? (cls.reduce(function(a,b){return a+b;},0)/cls.length).toFixed(2) : '--';
+  })();
 
-  var prompt = `あなたはプロのゴールド（XAU/USD）トレーダーです。
-以下のチャートデータを分析して、初心者にもわかりやすく日本語で回答してください。
+  var prompt = `あなたはダウ理論に精通したゴールド（XAU/USD）専門トレーダーです。
+ダウ理論のみを根拠として分析し、初心者にわかりやすい日本語で回答してください。
+RSIやCCIなどのオシレーターは一切使わないこと。
 
 【チャートデータ】
-- 時間足: ${currentTf}分足
-- 現在のリアルタイム価格: ${lastPrice}
+- 時間足: ${currentTf}
+- 現在価格（リアルタイム）: ${lastPrice}
 - ※エントリー・TP・SLは必ずこの価格を基準に計算すること
-- ※chartDataの最終値（${chartData[chartData.length-1].c}）は参考値
-- RSI(14): ${currentRsi}
-- MA20: ${ma20.toFixed(2)}
-- MA50: ${ma50.toFixed(2)}
-- 直近高値: ${recentHigh}
-- 直近安値: ${recentLow}
-- ローソク足データ(直近20本): ${JSON.stringify(recentCandles)}
+- スウィングハイ（直近）: ${JSON.stringify(recentHighPrices)}
+- スウィングロー（直近）: ${JSON.stringify(recentLowPrices)}
+- ATR(14): ${atr.toFixed(2)}
+- MA20: ${ma20}
+- ローソク足データ(直近30本): ${JSON.stringify(recentCandles)}
+- 事前判定トレンド: ${dow.trend}（${dow.trendDetail}）
 
-【分析指示】
-以下のJSON形式のみで回答してください。他のテキストは不要です：
+【ダウ理論分析の観点】
+1. 高値・安値の切り上がり/切り下がりでトレンドを判定
+2. 直近スウィングからサポート・レジスタンスを特定
+3. トレンド方向へのエントリーポイントを提示
+4. 押し目/戻り目の根拠を明記
+5. ATRを活用してTP・SLを設定
+
+以下のJSON形式のみで回答。他のテキスト不要：
 {
   "signal": "BUY" または "SELL" または "WAIT",
   "strength": "強" または "中" または "弱",
-  "reason": "エントリー根拠を3つ箇条書きで（各20文字以内）",
+  "dow_trend": "上昇トレンド" または "下降トレンド" または "レンジ相場" または "転換疑い",
+  "dow_basis": "判定根拠（HH/HL/LH/LLの組み合わせを明記・30文字以内）",
+  "entry_reason": ["根拠1（20文字以内）","根拠2（20文字以内）","根拠3（20文字以内）"],
   "entry": 数値,
   "tp": 数値,
   "sl": 数値,
-  "rr": "リスクリワード比（例：1:2.5）",
-  "sr": [{"label":"R1","price":数値},{"label":"S1","price":数値}],
-  "analysis": "初心者向けの解説（100文字以内）",
+  "rr": "例：1:2.1",
+  "sr": [
+    {"label":"R1","price":数値},
+    {"label":"R2","price":数値},
+    {"label":"S1","price":数値},
+    {"label":"S2","price":数値}
+  ],
+  "analysis": "ダウ理論に基づく解説（100文字以内）",
   "warning": "注意点（50文字以内）",
-  "rsi": ${currentRsi},
-  "ma20": ${ma20.toFixed(2)}
+  "ma20": ${ma20}
 }`;
 
   // ローディング表示
@@ -1852,83 +1841,102 @@ async function analyzeWithClaude(){
 }
 
 function renderAI(r){
-  var isBuy=r.signal==='BUY',isSell=r.signal==='SELL';
-  var sigBg=isBuy?'rgba(0,217,126,0.12)':isSell?'rgba(255,77,106,0.12)':'rgba(240,180,41,0.1)';
-  var sigBorder=isBuy?'var(--green)':isSell?'var(--red)':'var(--gold)';
-  var sigColor=isBuy?'var(--green)':isSell?'var(--red)':'var(--gold)';
-  var riskColor=r.rsi>65||r.rsi<35?'var(--red)':'var(--gold)';
+  var isBuy=r.signal==='BUY', isSell=r.signal==='SELL';
+  var sigBg     = isBuy?'rgba(0,217,126,0.12)':isSell?'rgba(255,77,106,0.12)':'rgba(240,180,41,0.1)';
+  var sigBorder = isBuy?'var(--green)':isSell?'var(--red)':'var(--gold)';
+  var sigColor  = isBuy?'var(--green)':isSell?'var(--red)':'var(--gold)';
+  var warnColor = 'var(--gold)';
 
-  // reason: 新形式は文字列、旧形式はtrendを使用
-  var trendText = r.trend || (typeof r.reason === 'string' ? r.reason.split('\n')[0] : '');
-  // RR比: 新形式はr.rr文字列、旧形式は計算
-  var rrText = r.rr || ('1:' + (Math.abs(r.tp-r.entry)/Math.abs(r.sl-r.entry)||0).toFixed(1));
-  // S/Rライン: 新形式はr.sr配列、旧形式はr.r1/r2/s1/s2
-  var srColorMap = {R1:['rgba(255,77,106,0.15)','#ff4d6a'],R2:['rgba(255,128,153,0.15)','#ff8099'],
-                   S1:['rgba(0,217,126,0.15)','#00d97e'],S2:['rgba(102,255,187,0.1)','#66ffbb']};
+  // S/Rライン
+  var srColorMap = {
+    R1:['rgba(255,77,106,0.15)','#ff4d6a'],
+    R2:['rgba(255,128,153,0.12)','#ff8099'],
+    S1:['rgba(0,217,126,0.15)','#00d97e'],
+    S2:['rgba(102,255,187,0.1)','#66ffbb']
+  };
   var srItems = '';
-  if(Array.isArray(r.sr)) {
+  if(Array.isArray(r.sr)){
     r.sr.forEach(function(s){
-      var c = srColorMap[s.label]||['rgba(240,180,41,0.1)','#f0b429'];
+      var c = srColorMap[s.label] || ['rgba(240,180,41,0.1)','#f0b429'];
       srItems += lineItem(s.label, s.price, c[0], c[1]);
     });
-  } else {
-    if(r.r2) srItems += lineItem('R2',r.r2,'rgba(255,128,153,0.15)','#ff8099');
-    if(r.r1) srItems += lineItem('R1',r.r1,'rgba(255,77,106,0.15)','#ff4d6a');
-    if(r.s1) srItems += lineItem('S1',r.s1,'rgba(0,217,126,0.15)','#00d97e');
-    if(r.s2) srItems += lineItem('S2',r.s2,'rgba(102,255,187,0.1)','#66ffbb');
   }
-  // warning: 新形式はr.warning、旧形式はr.risk
-  var warningText = r.warning || r.risk || '';
-  var actionText = r.action || '';
 
-  var html='';
-  // シグナル
-  html+='<div class="signal-card" style="background:'+sigBg+';border:1px solid '+sigBorder+';">'
-    +'<div><div class="signal-main" style="color:'+sigColor+'">'+r.signal+'</div>'
-    +'<div class="signal-sub">'+trendText+' | RSI '+r.rsi+'</div></div>'
-    +'<span class="signal-strength" style="background:'+sigBg+';border:1px solid '+sigBorder+';color:'+sigColor+'">'+r.strength+'</span>'
-    +'</div>';
-  // インジケーター
-  html+='<div class="ind-grid">'
-    +'<div class="ind-card"><div class="ind-label">RSI</div><div class="ind-value" style="color:'+riskColor+'">'+r.rsi+'</div><div class="ind-sub">'+(r.rsiSig||(r.rsi>70?'過買い':r.rsi<30?'過売り':'中立'))+'</div></div>'
-    +'<div class="ind-card"><div class="ind-label">MA20</div><div class="ind-value">'+r.ma20+'</div><div class="ind-sub">移動平均</div></div>'
-    +'</div>';
-  // S/Rライン
-  html+='<div class="lines-card"><div class="lines-title">S/R ライン</div>'+srItems+'</div>';
-  // エントリー根拠
-  if(r.reason) {
-    var reasons = Array.isArray(r.reason) ? r.reason : r.reason.split('\n').filter(Boolean);
-    var reasonHtml = '<div class="analysis-card" style="margin-bottom:12px;">';
-    reasonHtml += '<div class="analysis-head">エントリー根拠</div>';
-    reasons.forEach(function(re, i) {
-      reasonHtml += '<div style="font-size:13px;color:#a0b8d0;padding:4px 0;border-bottom:1px solid var(--border);">'
-        + (i+1) + '. ' + re + '</div>';
+  var rrText = r.rr || '--';
+  var displayEntry = lastPrice > 0 ? lastPrice.toFixed(2) : (r.entry || '--');
+  var dowTrend  = r.dow_trend  || r.trend || '--';
+  var dowBasis  = r.dow_basis  || '';
+  var dowColor  = (dowTrend==='上昇トレンド')?'var(--green)'
+                 :(dowTrend==='下降トレンド')?'var(--red)':'var(--gold)';
+  var reasons   = Array.isArray(r.entry_reason) ? r.entry_reason
+                 : (r.reason ? (Array.isArray(r.reason)?r.reason:r.reason.split('\n').filter(Boolean)) : []);
+  var warningText = r.warning || r.risk || '';
+
+  var html = '';
+
+  // ── シグナルカード ──
+  html += '<div class="signal-card" style="background:'+sigBg+';border:1px solid '+sigBorder+';">'
+    + '<div>'
+    + '<div class="signal-main" style="color:'+sigColor+'">'+r.signal+'</div>'
+    + '<div class="signal-sub" style="color:'+dowColor+'">'+dowTrend+'</div>'
+    + '</div>'
+    + '<span class="signal-strength" style="background:'+sigBg+';border:1px solid '+sigBorder+';color:'+sigColor+'">'+r.strength+'</span>'
+    + '</div>';
+
+  // ── ダウ理論判定カード ──
+  html += '<div class="analysis-card" style="border-color:'+dowColor+';margin-bottom:12px;">'
+    + '<div class="analysis-head" style="color:'+dowColor+'">📐 ダウ理論判定</div>'
+    + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px;">'
+    + '<div style="background:var(--bg);border-radius:8px;padding:10px;">'
+    + '<div style="font-size:9px;color:var(--muted);letter-spacing:1px;margin-bottom:4px;">トレンド</div>'
+    + '<div style="font-size:15px;font-weight:700;color:'+dowColor+';">'+dowTrend+'</div>'
+    + '</div>'
+    + '<div style="background:var(--bg);border-radius:8px;padding:10px;">'
+    + '<div style="font-size:9px;color:var(--muted);letter-spacing:1px;margin-bottom:4px;">判定根拠</div>'
+    + '<div style="font-size:12px;font-weight:700;color:'+dowColor+';">'+dowBasis+'</div>'
+    + '</div>'
+    + '</div>'
+    + '</div>';
+
+  // ── MA20 / ATR ──
+  html += '<div class="ind-grid">'
+    + '<div class="ind-card"><div class="ind-label">MA20</div><div class="ind-value">'+r.ma20+'</div><div class="ind-sub">移動平均</div></div>'
+    + '<div class="ind-card"><div class="ind-label">ATR(14)</div><div class="ind-value">'+(r.atr?parseFloat(r.atr).toFixed(2):'--')+'</div><div class="ind-sub">平均変動幅</div></div>'
+    + '</div>';
+
+  // ── S/Rライン ──
+  if(srItems) html += '<div class="lines-card"><div class="lines-title">S/R ライン（スウィング基準）</div>'+srItems+'</div>';
+
+  // ── エントリー根拠 ──
+  if(reasons.length){
+    html += '<div class="analysis-card" style="margin-bottom:12px;">';
+    html += '<div class="analysis-head">📋 エントリー根拠</div>';
+    reasons.forEach(function(re,i){
+      html += '<div style="font-size:13px;color:#a0b8d0;padding:5px 0;border-bottom:1px solid var(--border);">'+(i+1)+'. '+re+'</div>';
     });
-    reasonHtml += '</div>';
-    html += reasonHtml;
+    html += '</div>';
   }
-  // エントリー価格はリアルタイム価格を表示
-  var displayEntry = lastPrice > 0 ? lastPrice.toFixed(2) : (r.entry || '-');
-  // エントリー
-  html+='<div class="entry-card">'
-    +entryRow('エントリー',displayEntry,'')
-    +entryRow('TP（利確）',r.tp,'color:var(--green)')
-    +entryRow('SL（損切）',r.sl,'color:var(--red)')
-    +entryRow('RR比',rrText,'')
-    +'</div>';
-  // 分析テキスト
-  html+='<div class="analysis-card"><div class="analysis-head">◈ 分析</div><div class="analysis-text">'+r.analysis+'</div></div>';
-  if(actionText) html+='<div class="analysis-card"><div class="analysis-head">▶ 対応策</div><div class="analysis-text">'+actionText+'</div></div>';
-  if(warningText) html+='<div class="analysis-card" style="border-color:'+riskColor+'"><div class="analysis-head" style="color:'+riskColor+'">⚠ 注意</div><div class="analysis-text">'+warningText+'</div></div>';
+
+  // ── エントリー ──
+  html += '<div class="entry-card">'
+    + entryRow('エントリー', displayEntry, '')
+    + entryRow('TP（利確）', r.tp, 'color:var(--green)')
+    + entryRow('SL（損切）', r.sl, 'color:var(--red)')
+    + entryRow('RR比', rrText, '')
+    + '</div>';
+
+  // ── 分析テキスト ──
+  if(r.analysis) html += '<div class="analysis-card"><div class="analysis-head">◈ 分析</div><div class="analysis-text">'+r.analysis+'</div></div>';
+
+  // ── 注意 ──
+  if(warningText) html += '<div class="analysis-card" style="border-color:'+warnColor+'"><div class="analysis-head" style="color:'+warnColor+'">⚠ 注意</div><div class="analysis-text">'+warningText+'</div></div>';
 
   document.getElementById('aiPlaceholder').style.display='none';
-  var ac=document.getElementById('aiContent');
-  ac.innerHTML=html;
-  ac.style.display='flex';
-  ac.style.flexDirection='column';
-  // 先頭にスクロール
-  document.getElementById('aiBody').scrollTop=0;
-
+  var ac = document.getElementById('aiContent');
+  ac.innerHTML = html;
+  ac.style.display = 'flex';
+  ac.style.flexDirection = 'column';
+  document.getElementById('aiBody').scrollTop = 0;
 }
 function lineItem(name,price,bg,color){
   return '<div class="line-item"><span class="line-name">'+name+'</span>'
@@ -2365,39 +2373,87 @@ window.addEventListener('DOMContentLoaded', function(){
   });
 });
 
-// ══ RSI METER ══
-function calcRSI(closes, period) {
+// ══ ダウ理論計算 ══
+
+function calcATR(candles, period) {
   period = period || 14;
-  if(!closes || closes.length < period + 1) return null;
-  var gains = 0, losses = 0;
-  var len = closes.length;
-  for(var i = len - period; i < len; i++){
-    var d = closes[i] - closes[i-1];
-    if(d > 0) gains += d; else losses -= d;
+  if(!candles || candles.length < period + 1) return 5;
+  var trs = [];
+  for(var i = 1; i < candles.length; i++){
+    var hl = candles[i].h - candles[i].l;
+    var hpc = Math.abs(candles[i].h - candles[i-1].c);
+    var lpc = Math.abs(candles[i].l - candles[i-1].c);
+    trs.push(Math.max(hl, hpc, lpc));
   }
-  if(losses === 0) return 100;
-  var rs = gains / losses;
-  return Math.round(100 - 100 / (1 + rs));
+  var recent = trs.slice(-period);
+  return recent.reduce(function(a,b){return a+b;},0) / recent.length;
 }
 
-function updateRsiGauge(rsi) {
-  var labelEl = document.getElementById('rsiGaugeLabel');
-  var indEl   = document.getElementById('rsiGaugeIndicator');
-  if(!labelEl || !indEl) return;
+function calcDowTheory(candles) {
+  if(!candles || candles.length < 10) {
+    return {trend:'判定中', trendDetail:'データ不足', trendColor:'var(--muted)',
+      swingHighs:[], swingLows:[], recentHighs:[], recentLows:[],
+      resistanceLevels:[], supportLevels:[], atr:5};
+  }
+  var n = 3;
+  var swingHighs = [], swingLows = [];
+  for(var i = n; i < candles.length - n; i++){
+    var isHigh = true, isLow = true;
+    for(var j = 1; j <= n; j++){
+      if(candles[i].h <= candles[i-j].h || candles[i].h <= candles[i+j].h) isHigh = false;
+      if(candles[i].l >= candles[i-j].l || candles[i].l >= candles[i+j].l) isLow  = false;
+    }
+    if(isHigh) swingHighs.push({idx:i, price:candles[i].h, t:candles[i].t});
+    if(isLow)  swingLows.push( {idx:i, price:candles[i].l, t:candles[i].t});
+  }
+  var recentHighs = swingHighs.slice(-4);
+  var recentLows  = swingLows.slice(-4);
 
-  if(rsi === null || rsi === undefined){
-    labelEl.textContent = 'RSI --';
-    labelEl.style.color = '#e8f0ff';
-    indEl.style.left = '50%';
-    indEl.style.background = '#e8f0ff';
-    return;
+  var hhCount=0, hlCount=0, lhCount=0, llCount=0;
+  for(var i=1; i<recentHighs.length; i++){
+    if(recentHighs[i].price > recentHighs[i-1].price) hhCount++; else lhCount++;
+  }
+  for(var i=1; i<recentLows.length; i++){
+    if(recentLows[i].price > recentLows[i-1].price) hlCount++; else llCount++;
   }
 
-  var color = rsi <= 30 ? '#ff4d6a' : rsi >= 70 ? '#00d97e' : '#e8f0ff';
-  labelEl.textContent = 'RSI ' + rsi;
-  labelEl.style.color = color;
-  indEl.style.left = rsi + '%';
-  indEl.style.background = color;
+  var trend, trendDetail, trendColor;
+  if(hhCount > 0 && hlCount > 0 && lhCount === 0 && llCount === 0){
+    trend='上昇トレンド'; trendDetail='HH + HL 確認'; trendColor='var(--green)';
+  } else if(lhCount > 0 && llCount > 0 && hhCount === 0 && hlCount === 0){
+    trend='下降トレンド'; trendDetail='LH + LL 確認'; trendColor='var(--red)';
+  } else if(hhCount > lhCount && hlCount > llCount){
+    trend='上昇トレンド'; trendDetail='HH+HL 優勢'; trendColor='var(--green)';
+  } else if(lhCount > hhCount && llCount > hlCount){
+    trend='下降トレンド'; trendDetail='LH+LL 優勢'; trendColor='var(--red)';
+  } else if(hhCount > 0 && llCount > 0){
+    trend='転換疑い'; trendDetail='HH+LL 混在'; trendColor='var(--gold)';
+  } else {
+    trend='レンジ相場'; trendDetail='方向感なし'; trendColor='var(--gold)';
+  }
+
+  var atr = calcATR(candles, 14);
+  var resistanceLevels = recentHighs.map(function(s){return s.price;})
+    .sort(function(a,b){return b-a;}).slice(0,3);
+  var supportLevels = recentLows.map(function(s){return s.price;})
+    .sort(function(a,b){return a-b;}).slice(0,3);
+
+  return {
+    trend:trend, trendDetail:trendDetail, trendColor:trendColor,
+    swingHighs:swingHighs, swingLows:swingLows,
+    recentHighs:recentHighs, recentLows:recentLows,
+    resistanceLevels:resistanceLevels, supportLevels:supportLevels,
+    atr:atr
+  };
+}
+
+function updateDowBadge(dow) {
+  var el  = document.getElementById('dowBadgeTrend');
+  var sub = document.getElementById('dowBadgeSub');
+  if(!el || !sub) return;
+  el.textContent  = dow.trend;
+  el.style.color  = dow.trendColor || 'var(--muted)';
+  sub.textContent = dow.trendDetail;
 }
 
 function fitYAxis(minIdx,maxIdx){

@@ -795,6 +795,14 @@ async function loadChart(tf) {
   if(tradeMarks && tradeMarks.length && chartInstance) chartInstance.update('none');
 }
 
+// ── GC_DEBUG ヘルパー ──
+function gcDebugMappedSummary(mapped) {
+  var first = mapped[0], last = mapped[mapped.length - 1];
+  console.log('[mapped] サマリー: ' + mapped.length + '本'
+    + ' | 先頭 t=' + first.t + ' bt="' + first.bt + '"'
+    + ' | 末尾 t=' + last.t  + ' bt="' + last.bt  + '"');
+}
+
 // ══ METAAPI CANDLES ══
 async function fetchMetaApiCandles(tf, count) {
   var tfMap = {'1':'1m','5':'5m','15':'15m','60':'1h','240':'4h','1D':'1d','1W':'1w'};
@@ -854,6 +862,101 @@ async function fetchMetaApiCandles(tf, count) {
       console.log('[MetaApi] 現在足 status:', currentRes.status, await currentRes.text());
     }
 
+    // ── mapped 整合チェック（GC_DEBUG 時のみ） ──
+    if(window.GC_DEBUG && mapped.length){
+      // 先頭・末尾サマリー
+      gcDebugMappedSummary(mapped);
+
+      // 主チェック：隣接バーの時系列整合
+      // チェック1: t が昇順であること
+      // チェック2: bt 文字列が逆転していないこと
+      // ※ brokerTime を Date parse して UTC 変換する処理は行わない
+      var tWarnCount  = 0;
+      var btWarnCount = 0;
+
+      for(var _mi = 1; _mi < mapped.length; _mi++){
+        var prev = mapped[_mi - 1];
+        var cur  = mapped[_mi];
+
+        // チェック1: t 昇順
+        if(cur.t <= prev.t){
+          console.warn('[mapped] t逆転 index=' + _mi
+            + ' prev.t=' + prev.t
+            + ' cur.t='  + cur.t
+            + ' prev.bt="' + prev.bt + '"'
+            + ' cur.bt="'  + cur.bt  + '"');
+          tWarnCount++;
+        }
+
+        // チェック2: bt 文字列逆転なし（文字列の辞書順比較）
+        // brokerTime は "YYYY-MM-DD HH:mm:ss.sss" 形式のため
+        // 辞書順 = 時系列順になる。UTC変換は行わない。
+        if(prev.bt && cur.bt){
+          var prevBtStr = prev.bt.toString();
+          var curBtStr  = cur.bt.toString();
+          if(curBtStr <= prevBtStr){
+            console.warn('[mapped] bt文字列逆転 index=' + _mi
+              + ' prev.bt="' + prevBtStr + '"'
+              + ' cur.bt="'  + curBtStr  + '"');
+            btWarnCount++;
+          }
+        }
+
+        // 追加チェック: btRaw の日付部分が飛びすぎていないか（文字列比較のみ）
+        // "YYYY-MM-DD HH:mm:ss" の先頭10文字（日付部分）を比較。
+        // 隣接バーで日付が2日以上飛んでいる場合のみ warning。
+        // Date parse・UTC変換は一切行わない。
+        if(prev.bt && cur.bt){
+          var prevDate = prev.bt.toString().slice(0, 10);
+          var curDate  = cur.bt.toString().slice(0, 10);
+          if(prevDate && curDate && prevDate.length === 10 && curDate.length === 10){
+            // 文字列として "YYYY-MM-DD" 形式なら辞書順 = 日付順
+            // curDate が prevDate より2日以上後なら gap 警告
+            // 厳密な日数計算はせず、文字列の差が大きい場合のみ検出
+            if(curDate > prevDate){
+              // prevDate と curDate の差を簡易チェック（月・日の文字列比較）
+              // 例: "2026-03-27" → "2026-03-29" で2日差
+              // ここでは年月が同じで日が2以上離れている場合のみ警告
+              var prevD = prevDate.slice(8, 10);
+              var curD  = curDate.slice(8, 10);
+              var prevM = prevDate.slice(5, 7);
+              var curM  = curDate.slice(5, 7);
+              var dayGap = (curM === prevM)
+                ? (parseInt(curD, 10) - parseInt(prevD, 10))
+                : 999; // 月をまたぐ場合は gap ありとみなす
+              if(dayGap >= 2){
+                console.warn('[mapped] btRaw の日付が ' + dayGap + '日以上飛んでいます'
+                  + ' index=' + _mi
+                  + ' prev.bt="' + prev.bt + '"'
+                  + ' cur.bt="'  + cur.bt  + '"');
+              }
+            }
+          }
+        }
+      }
+
+      if(tWarnCount === 0 && btWarnCount === 0){
+        console.log('[mapped] 整合チェック OK（' + mapped.length + '本、'
+          + 't昇順・bt文字列逆転なし）');
+      }
+
+      // 各バーの詳細出力（比較しやすい1行形式）
+      console.group('[mapped] 全バー詳細');
+      mapped.forEach(function(m, idx){
+        console.log(
+          'i=' + String(idx).padStart(3, ' ')
+          + '  t='        + m.t
+          + '  bt="'      + m.bt      + '"'
+          + '  btLabel="' + m.btLabel + '"'
+          + '  O=' + m.o.toFixed(2)
+          + ' H=' + m.h.toFixed(2)
+          + ' L=' + m.l.toFixed(2)
+          + ' C=' + m.c.toFixed(2)
+        );
+      });
+      console.groupEnd();
+    }
+
     return mapped;
   } catch(e) { console.log('[MetaApi] catch error:', e); return null; }
 }
@@ -900,173 +1003,336 @@ function calcMA(data, p) {
 }
 
 function _fitY(i0, i1) {
+  var n = _cv.candles.length;
   i0 = Math.max(0, Math.floor(i0));
-  i1 = Math.min(_cv.candles.length-1, Math.ceil(i1));
-  var ls=[], hs=[];
-  for(var i=i0; i<=i1; i++){
-    var c=_cv.candles[i];
-    if(c && c.l>100){ ls.push(c.l); hs.push(c.h); }
+  i1 = Math.min(n - 1, Math.ceil(i1));
+  var lo = Infinity, hi = -Infinity;
+  for(var i = i0; i <= i1; i++){
+    var c = _cv.candles[i];
+    if(!c || c.l <= 100) continue;
+    if(c.l < lo) lo = c.l;
+    if(c.h > hi) hi = c.h;
   }
-  if(!ls.length) return;
-  // Y軸はローソク足のhigh/lowのみ（S/Rライン除外）、上下0.5% padding
-  _cv.yMin = Math.min.apply(null,ls)*0.995;
-  _cv.yMax = Math.max.apply(null,hs)*1.005;
+  if(!isFinite(lo)) return;
+  var range = (hi - lo) || 1;
+  _cv.yMin = lo - range * 0.05;
+  _cv.yMax = hi + range * 0.05;
 }
-
+function _calcMAArr(candles, period){
+  var n = candles.length;
+  var result = new Array(n);
+  var sums = new Array(n + 1);
+  sums[0] = 0;
+  for(var i = 0; i < n; i++) sums[i+1] = sums[i] + candles[i].c;
+  for(var i = 0; i < n; i++){
+    if(i < period - 1){ result[i] = null; continue; }
+    result[i] = (sums[i+1] - sums[i - period + 1]) / period;
+  }
+  return result;
+}
 function buildChart(candles, lines) {
   _cv.candles = candles;
-  _cv.lines = lines;
-  _cv.vMin = 0;
-  _cv.vMax = candles.length-1;
-  _fitY(0, candles.length-1);
+  _cv.lines   = lines || [];
+  _cv.vMin    = 0;
+  _cv.vMax    = candles.length - 1;
+  _fitY(0, candles.length - 1);
+  _cv.ma20 = _calcMAArr(candles, 20);
+  _cv.ma50 = _calcMAArr(candles, 50);
   chartInstance = {
-    update: function(){ redrawChart(); },
+    update:  function(){ redrawChart(); },
     destroy: function(){},
-    resize: function(){ redrawChart(); }
+    resize:  function(){ redrawChart(); },
+    scales: {
+      x: {
+        min: 0, max: candles.length - 1,
+        getPixelForValue: function(v){
+          var canvas = document.getElementById('mainChart');
+          if(!canvas) return 0;
+          var dpr = window.devicePixelRatio || 1;
+          var W = canvas.width / dpr;
+          var plotW = W - 8 - 64;
+          if(_cv.vMax <= _cv.vMin) return 0;
+          return 8 + (v - _cv.vMin) / (_cv.vMax - _cv.vMin) * plotW;
+        }
+      },
+      y: {
+        top: 8, bottom: 0,
+        getPixelForValue: function(p){
+          var canvas = document.getElementById('mainChart');
+          if(!canvas) return 0;
+          var dpr = window.devicePixelRatio || 1;
+          var H = canvas.height / dpr;
+          var plotH = H - 8 - 36;
+          if(_cv.yMax <= _cv.yMin) return 0;
+          return 8 + (1 - (p - _cv.yMin) / (_cv.yMax - _cv.yMin)) * plotH;
+        }
+      }
+    }
   };
   redrawChart();
   updateDowBadge(calcDowTheory(candles));
 }
-
+// 未確定足判定（暫定：最後の1本を未確定とみなす）
+// 本来は timeframe と brokerTime から判定すべきだが
+// ブローカー時刻オフセットが不明なため n-1 を暫定未確定とする
+function _isUnconfirmed(idx, n){
+  return idx >= n - 1;
+}
 function redrawChart() {
   var canvas = document.getElementById('mainChart');
-  if(!canvas || !_cv.candles.length) return;
-  var dpr = window.devicePixelRatio||1;
-  var W = canvas.width/dpr, H = canvas.height/dpr;
+  if(!canvas || !_cv.candles || !_cv.candles.length) return;
+
+  var dpr = window.devicePixelRatio || 1;
+  var W   = canvas.width  / dpr;
+  var H   = canvas.height / dpr;
   var ctx = canvas.getContext('2d');
-  var candles=_cv.candles, lines=_cv.lines;
+
   var padL=8, padR=64, padT=8, padB=36;
-  var plotW=W-padL-padR, plotH=H-padT-padB;
-  var vMin=_cv.vMin, vMax=_cv.vMax, yMin=_cv.yMin, yMax=_cv.yMax;
-  if(vMax<=vMin || yMax<=yMin) return;
+  var plotW = W - padL - padR;
+  var plotH = H - padT - padB;
+  if(plotW <= 0 || plotH <= 0) return;
 
-  function xOf(idx){ return padL+(idx-vMin)/(vMax-vMin)*plotW; }
-  function yOf(p){ return padT+(1-(p-yMin)/(yMax-yMin))*plotH; }
+  var candles = _cv.candles;
+  var n       = candles.length;
+  var vMin    = _cv.vMin, vMax = _cv.vMax;
+  var yMin    = _cv.yMin, yMax = _cv.yMax;
+  if(vMax <= vMin || yMax <= yMin) return;
 
-  ctx.save();
-  ctx.scale(dpr, dpr);
+  var i0 = Math.max(0,     Math.floor(vMin));
+  var i1 = Math.min(n - 1, Math.ceil(vMax));
+  var visibleCount = vMax - vMin + 1;
+
+  function xOf(idx){ return padL + (idx - vMin) / (vMax - vMin) * plotW; }
+  function yOf(p)  { return padT + (1 - (p - yMin) / (yMax - yMin)) * plotH; }
+  function pxX(v)  { return Math.floor(v) + 0.5; }
+  function pxY(v)  { return Math.floor(v) + 0.5; }
+
+  // 高DPI対応
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, W, H);
 
-  // グリッド
-  ctx.strokeStyle='rgba(30,45,68,0.5)'; ctx.lineWidth=0.5;
-  for(var gi=0; gi<=6; gi++){
-    var gy=padT+gi/6*plotH;
-    ctx.beginPath(); ctx.moveTo(padL,gy); ctx.lineTo(padL+plotW,gy); ctx.stroke();
+  // 背景
+  ctx.fillStyle = '#080c12';
+  ctx.fillRect(0, 0, W, H);
+
+  // Y軸ティック（niceStep）
+  function niceStep(range, targetCount){
+    if(range <= 0 || targetCount <= 0) return 1;
+    var rough = range / targetCount;
+    if(rough <= 0) return 1;
+    var mag  = Math.pow(10, Math.floor(Math.log(rough) / Math.LN10));
+    if(!isFinite(mag) || mag <= 0) return 1;
+    var norm = rough / mag;
+    var nice;
+    if     (norm < 1.5) nice = 1;
+    else if(norm < 3)   nice = 2;
+    else if(norm < 7)   nice = 5;
+    else                nice = 10;
+    return nice * mag;
   }
-  for(var gxi=0; gxi<=4; gxi++){
-    var gx=padL+gxi/4*plotW;
-    ctx.beginPath(); ctx.moveTo(gx,padT); ctx.lineTo(gx,padT+plotH); ctx.stroke();
+  var yRange = yMax - yMin;
+  var yStep  = niceStep(yRange, 6);
+  var yStart = Math.ceil(yMin / yStep) * yStep;
+
+  ctx.strokeStyle = 'rgba(30,45,68,0.6)';
+  ctx.lineWidth   = 1;
+  ctx.setLineDash([]);
+  ctx.fillStyle   = '#4a6080';
+  ctx.font        = '9px Space Mono, monospace';
+  ctx.textAlign   = 'left';
+  for(var gp = yStart; gp <= yMax + yStep * 0.01; gp += yStep){
+    var gy = pxY(yOf(gp));
+    if(gy < padT || gy > padT + plotH) continue;
+    ctx.beginPath();
+    ctx.moveTo(padL,         gy);
+    ctx.lineTo(padL + plotW, gy);
+    ctx.stroke();
+    ctx.fillText(gp.toFixed(2), padL + plotW + 4, gy + 3);
   }
 
-  // S/Rライン + ラベル
-  lines.forEach(function(l){
-    if(!l.price||l.price<1000) return;
-    var y=yOf(l.price);
-    if(y<padT||y>padT+plotH) return;
-    ctx.save();
-    ctx.strokeStyle=l.color||'#888'; ctx.lineWidth=l.width||1.5;
-    if(l.dash&&l.dash.length) ctx.setLineDash(l.dash);
-    ctx.beginPath(); ctx.moveTo(padL,y); ctx.lineTo(padL+plotW,y); ctx.stroke();
+  // MAライン（buildChartでキャッシュ済み）
+  function drawMALine(arr, color){
+    if(!arr) return;
+    ctx.strokeStyle = color;
+    ctx.lineWidth   = 1.5;
+    ctx.setLineDash([]);
+    ctx.beginPath();
+    var started = false;
+    for(var mi = i0; mi <= i1; mi++){
+      if(arr[mi] === null || arr[mi] === undefined){ started = false; continue; }
+      var mx = xOf(mi), my = yOf(arr[mi]);
+      if(!started){ ctx.moveTo(mx, my); started = true; }
+      else          ctx.lineTo(mx, my);
+    }
+    ctx.stroke();
+  }
+  drawMALine(_cv.ma20, '#f0b429');
+  drawMALine(_cv.ma50, '#3d8bff');
+
+  // S/Rオーバーレイライン
+  (_cv.lines || []).forEach(function(l){
+    if(!l || !l.price || l.price < 1000 || l.price > 100000) return;
+    var ly = pxY(yOf(l.price));
+    if(ly < padT || ly > padT + plotH) return;
+    ctx.strokeStyle = l.color || '#f0b429';
+    ctx.lineWidth   = l.width || 1.5;
+    ctx.setLineDash(l.dash  || []);
+    ctx.beginPath();
+    ctx.moveTo(padL,         ly);
+    ctx.lineTo(padL + plotW, ly);
+    ctx.stroke();
     ctx.setLineDash([]);
     if(l.label){
-      ctx.font='10px Space Mono,monospace';
-      var tw=ctx.measureText(l.label).width;
-      ctx.fillStyle='rgba(8,12,18,0.8)';
-      ctx.fillRect(padL+4,y-14,tw+8,14);
-      ctx.fillStyle=l.color||'#888';
-      ctx.textAlign='left'; ctx.textBaseline='bottom';
-      ctx.fillText(l.label,padL+8,y-2);
+      ctx.font = '10px Space Mono, monospace';
+      var lw = ctx.measureText(l.label).width;
+      ctx.fillStyle = 'rgba(8,12,18,0.8)';
+      ctx.fillRect(padL + 4, ly - 13, lw + 8, 13);
+      ctx.fillStyle = l.color || '#f0b429';
+      ctx.textAlign = 'left';
+      ctx.fillText(l.label, padL + 8, ly - 2);
     }
-    ctx.restore();
   });
 
-  // MA20 / MA50
-  var i0=Math.max(0,Math.floor(vMin)), i1=Math.min(candles.length-1,Math.ceil(vMax));
-  var closes=candles.map(function(c){return c.c;});
-  var ma20=calcMA(closes,20), ma50=calcMA(closes,50);
-  function drawMA(arr,color){
-    ctx.save(); ctx.strokeStyle=color; ctx.lineWidth=1.5;
-    ctx.beginPath(); var started=false;
-    for(var i=i0;i<=i1;i++){
-      if(arr[i]==null){started=false;continue;}
-      var x=xOf(i),y=yOf(arr[i]);
-      if(!started){ctx.moveTo(x,y);started=true;}else{ctx.lineTo(x,y);}
+  // ローソク足（ヒゲ→実体の順）
+  var candleW = Math.max(1, plotW / visibleCount * 0.6);
+  for(var ci = i0; ci <= i1; ci++){
+    var c = candles[ci];
+    if(!c) continue;
+    var isBull        = c.c >= c.o;
+    var isUnconfirmed = _isUnconfirmed(ci, n);
+    var baseCol = isBull ? '#00d97e' : '#ff4d6a';
+    var col = isUnconfirmed
+      ? (isBull ? 'rgba(0,217,126,0.45)' : 'rgba(255,77,106,0.45)')
+      : baseCol;
+
+    // ヒゲ：X・Y ともに 0.5px 補正でシャープに
+    ctx.strokeStyle = col;
+    ctx.lineWidth   = 1;
+    ctx.setLineDash([]);
+    ctx.beginPath();
+    ctx.moveTo(pxX(xOf(ci)), pxY(yOf(c.h)));
+    ctx.lineTo(pxX(xOf(ci)), pxY(yOf(c.l)));
+    ctx.stroke();
+
+    // 実体
+    var bTop = yOf(Math.max(c.o, c.c));
+    var bBot = yOf(Math.min(c.o, c.c));
+    var bH   = Math.max(1, bBot - bTop);
+    ctx.fillStyle = col;
+    ctx.fillRect(
+      Math.round(xOf(ci) - candleW / 2),
+      Math.round(bTop),
+      Math.round(candleW),
+      Math.round(bH)
+    );
+  }
+
+  // X軸ラベル（btLabel 優先、なければ t UTC フォールバック）
+  // brokerTime を Date parse・UTC変換しない方針を維持
+  var labelInterval = Math.max(1, Math.floor(visibleCount / 5));
+  ctx.fillStyle = '#a0c0e0';
+  ctx.font      = '11px Space Mono, monospace';
+  ctx.textAlign = 'center';
+  for(var xi = i0; xi <= i1; xi++){
+    if((xi - i0) % labelInterval !== 0) continue;
+    var xc = candles[xi];
+    if(!xc) continue;
+    var label = xc.btLabel || '';
+    if(!label){
+      var d = new Date(xc.t);
+      label = (d.getUTCMonth()+1).toString().padStart(2,'0') + '/'
+            + d.getUTCDate().toString().padStart(2,'0')       + ' '
+            + d.getUTCHours().toString().padStart(2,'0')      + ':'
+            + d.getUTCMinutes().toString().padStart(2,'0');
     }
-    ctx.stroke(); ctx.restore();
-  }
-  drawMA(ma20,'#f0b429');
-  drawMA(ma50,'#3d8bff');
-
-  // ローソク足
-  var candleW=Math.max(1,plotW/(vMax-vMin+1)*0.7);
-  for(var ci=i0;ci<=i1;ci++){
-    var c=candles[ci]; if(!c) continue;
-    var cx=xOf(ci);
-    var isBull=c.c>=c.o;
-    var col=isBull?'rgba(0,217,126,0.85)':'rgba(255,77,106,0.85)';
-    // ヒゲ（high-low）1px細線
-    ctx.strokeStyle=col; ctx.lineWidth=1;
-    ctx.beginPath(); ctx.moveTo(cx,yOf(c.h)); ctx.lineTo(cx,yOf(c.l)); ctx.stroke();
-    // 実体（open-close）
-    var bTop=yOf(Math.max(c.o,c.c)), bBot=yOf(Math.min(c.o,c.c));
-    ctx.fillStyle=col;
-    ctx.fillRect(cx-candleW/2,bTop,candleW,Math.max(1,bBot-bTop));
+    ctx.fillText(label, xOf(xi), padT + plotH + 24);
   }
 
-  // BUY/SELLマーク
-  if(tradeMarks&&tradeMarks.length){
-    var csStart=candles[i0]?candles[i0].t:0, csEnd=candles[i1]?candles[i1].t:0;
+  // 現在価格ライン
+  if(lastPrice > 0){
+    var lpy = pxY(yOf(lastPrice));
+    if(lpy >= padT && lpy <= padT + plotH){
+      ctx.strokeStyle = 'rgba(232,240,255,0.8)';
+      ctx.lineWidth   = 1;
+      ctx.setLineDash([4, 3]);
+      ctx.beginPath();
+      ctx.moveTo(padL,         lpy);
+      ctx.lineTo(padL + plotW, lpy);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      var priceStr = lastPrice.toFixed(2);
+      ctx.font = '9px Space Mono, monospace';
+      var plw  = ctx.measureText(priceStr).width;
+      ctx.fillStyle = '#e8f0ff';
+      ctx.fillRect(padL + plotW + 2, lpy - 8, plw + 8, 16);
+      ctx.fillStyle = '#080c12';
+      ctx.textAlign = 'left';
+      ctx.fillText(priceStr, padL + plotW + 6, lpy + 4);
+    }
+  }
+
+  // 約定マーク
+  // deal.time（UTC ISO）を時間解釈の主軸にする
+  // deal.brokerTime はローカル時間文字列のため UTC 解釈しない
+  if(tradeMarks && tradeMarks.length){
     tradeMarks.forEach(function(deal){
-      var dtRaw=deal.brokerTime||deal.time; if(!dtRaw) return;
-      var dt=typeof dtRaw==='string'&&dtRaw.includes(' ')
-        ?new Date(dtRaw.replace(' ','T')+'Z').getTime():new Date(dtRaw).getTime();
-      if(isNaN(dt)||dt<csStart||dt>csEnd) return;
-      var ci2=i0,minD=Infinity;
-      for(var di=i0;di<=i1;di++){var d2=Math.abs(candles[di].t-dt);if(d2<minD){minD=d2;ci2=di;}}
-      var mx=xOf(ci2);
-      var pr=parseFloat(deal.price||deal.p||0);
-      if(pr<=0||pr<yMin||pr>yMax) return;
-      var my=yOf(pr), isBuy=deal.type==='DEAL_TYPE_BUY';
-      ctx.save(); ctx.font='bold 12px Space Mono,monospace'; ctx.textAlign='center';
-      if(isBuy){
-        ctx.fillStyle='#00d97e'; ctx.fillText('▲',mx,my+18);
-        ctx.font='8px Space Mono,monospace'; ctx.fillText(pr.toFixed(0),mx,my+28);
-      }else{
-        ctx.fillStyle='#ff4d6a'; ctx.fillText('▽',mx,my-8);
-        ctx.font='8px Space Mono,monospace'; ctx.fillText(pr.toFixed(0),mx,my-18);
+      var dealTime = deal.time ? new Date(deal.time).getTime() : NaN;
+      if(isNaN(dealTime)) return;
+      var closestIdx = -1, minDiff = Infinity;
+      for(var di = i0; di <= i1; di++){
+        var diff = Math.abs(candles[di].t - dealTime);
+        if(diff < minDiff){ minDiff = diff; closestIdx = di; }
       }
-      ctx.restore();
+      if(closestIdx < 0) return;
+      var dxPos  = xOf(closestIdx);
+      var dPrice = parseFloat(deal.price || 0);
+      if(dPrice <= 0) return;
+      var dyPos = yOf(dPrice);
+      if(dyPos < padT || dyPos > padT + plotH) return;
+      ctx.font      = 'bold 12px Space Mono, monospace';
+      ctx.textAlign = 'center';
+      if(deal.type === 'DEAL_TYPE_BUY'){
+        ctx.fillStyle = '#00d97e';
+        ctx.fillText('▲', dxPos, dyPos + 18);
+        ctx.font = '8px Space Mono, monospace';
+        ctx.fillText(dPrice.toFixed(0), dxPos, dyPos + 28);
+      } else {
+        ctx.fillStyle = '#ff4d6a';
+        ctx.fillText('▽', dxPos, dyPos - 8);
+        ctx.font = '8px Space Mono, monospace';
+        ctx.fillText(dPrice.toFixed(0), dxPos, dyPos - 18);
+      }
     });
   }
 
-  // Y軸（右）
-  ctx.save(); ctx.fillStyle='#4a6080'; ctx.font='9px Space Mono,monospace';
-  ctx.textAlign='left'; ctx.textBaseline='middle';
-  for(var yi=0;yi<=6;yi++){
-    var py=padT+yi/6*plotH, pv=yMax-yi/6*(yMax-yMin);
-    ctx.fillText(pv.toFixed(2),padL+plotW+4,py);
-  }
-  ctx.restore();
-
-  // X軸（下）
-  ctx.save(); ctx.fillStyle='#a0c0e0'; ctx.font='11px Space Mono,monospace';
-  ctx.textAlign='center'; ctx.textBaseline='top';
-  for(var xi=0;xi<=4;xi++){
-    var idx2=Math.round(vMin+xi/4*(vMax-vMin));
-    idx2=Math.max(0,Math.min(candles.length-1,idx2));
-    var cd=candles[idx2]; if(!cd) continue;
-    var d=new Date(cd.t), lbl;
-    if(currentTf==='1D'||currentTf==='1W'){
-      lbl=d.toLocaleDateString('ja-JP',{month:'2-digit',day:'2-digit',timeZone:'Asia/Tokyo'});
-    }else{
-      lbl=d.toLocaleDateString('ja-JP',{month:'2-digit',day:'2-digit',timeZone:'Asia/Tokyo'})
-         +' '+d.toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit',timeZone:'Asia/Tokyo'});
+  // デバッグ出力（window.GC_DEBUG = true で有効）
+  if(window.GC_DEBUG){
+    console.group('redrawChart i0=' + i0 + ' i1=' + i1
+      + ' yMin=' + _cv.yMin.toFixed(2) + ' yMax=' + _cv.yMax.toFixed(2)
+      + ' visibleCount=' + visibleCount);
+    for(var di = i0; di <= i1; di++){
+      var dc = candles[di];
+      if(!dc) continue;
+      var assumedUnconfirmed = _isUnconfirmed(di, n);
+      console.log(
+        'i=' + String(di).padStart(3,' ')
+        + (assumedUnconfirmed ? ' [未確定★暫定]' : ' [確定済み]')
+        + '  t='        + dc.t
+        + '  bt="'      + dc.bt      + '"'
+        + '  btLabel="' + (dc.btLabel||'') + '"'
+        + '  O=' + dc.o.toFixed(2)
+        + ' H=' + dc.h.toFixed(2)
+        + ' L=' + dc.l.toFixed(2)
+        + ' C=' + dc.c.toFixed(2)
+        + '  x='  + Math.round(xOf(di))
+        + ' yO='  + Math.round(yOf(dc.o))
+        + ' yH='  + Math.round(yOf(dc.h))
+        + ' yL='  + Math.round(yOf(dc.l))
+        + ' yC='  + Math.round(yOf(dc.c))
+      );
     }
-    ctx.fillText(lbl,xOf(idx2),padT+plotH+4);
+    console.groupEnd();
   }
-  ctx.restore();
-
-  ctx.restore(); // DPR scale
 }
 
 // ══ HEADER PRICE ══

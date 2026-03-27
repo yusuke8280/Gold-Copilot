@@ -669,18 +669,15 @@ var brokerTimeOffset = 0; // ブローカーサーバー時刻とDate.now()の�
 var mt5Connected = false;
 var mt5Positions = [];
 var mt5Timer = null;
-var lastPrice = 0;
-var mt5Bid = 0; // MetaApi bid ベース価格（現在価格ラインの基準値）
+var headerPrice = 0;    // ヘッダー表示用価格（Finnhub / MetaApi bid）
+var chartLastClose = 0; // chartData 末尾足の終値
+var mt5Bid = 0;         // MetaApi bid（現在価格ライン・マージン計算基準）
 var dayOpenPrice = 0;
 var mt5Balance = 0;
 var mt5Equity = 0;
 var tradeMarks = [];
 var tdWs = null;
 var tdWsConnected = false;
-var currentCandle = null;
-var currentCandleStartTime = 0;
-var currentCandleData = null;
-var finnhubLastTimestamp = 0;
 var chartLoadedWithMT5 = false; // MT5データでチャートを読み込み済みフラグ
 
 // ══ INIT ══
@@ -1252,10 +1249,9 @@ function redrawChart() {
     ctx.fillText(label, xOf(xi), padT + plotH + 24);
   }
 
-  // 現在価格ライン（MetaApi bid ベース）
-  var _priceLine = mt5Bid > 0 ? mt5Bid : lastPrice;
-  if(_priceLine > 0){
-    var lpy = pxY(yOf(_priceLine));
+  // 現在価格ライン（MetaApi bid のみ）
+  if(mt5Bid > 0){
+    var lpy = pxY(yOf(mt5Bid));
     if(lpy >= padT && lpy <= padT + plotH){
       ctx.strokeStyle = 'rgba(232,240,255,0.8)';
       ctx.lineWidth   = 1;
@@ -1265,7 +1261,7 @@ function redrawChart() {
       ctx.lineTo(padL + plotW, lpy);
       ctx.stroke();
       ctx.setLineDash([]);
-      var priceStr = _priceLine.toFixed(2);
+      var priceStr = mt5Bid.toFixed(2);
       ctx.font = '9px Space Mono, monospace';
       var plw  = ctx.measureText(priceStr).width;
       ctx.fillStyle = '#e8f0ff';
@@ -1346,8 +1342,9 @@ function updateHeaderFromCandles(candles) {
   var last = candles[candles.length-1];
   var first = candles[0];
   dayOpenPrice = first.o;
+  chartLastClose = last.c;
+  headerPrice = last.c;
   document.getElementById('hdrPrice').textContent = last.c.toFixed(2);
-  lastPrice = last.c;
   updateHdrPct(last.c);
 }
 
@@ -1363,7 +1360,7 @@ function updateHdrPct(price) {
 
 function updateMarginInfo() {
   var lot = parseFloat(document.getElementById('lotInput').value) || 0.01;
-  var price = lastPrice || 0;
+  var price = mt5Bid || chartLastClose || 0;
   var req = price > 0 ? Math.round(lot * price * USD_JPY) : 0;
   var avail = mt5Equity > 0 ? Math.round(mt5Equity) : 0;
   var el = document.getElementById('marginInfo');
@@ -1374,8 +1371,8 @@ function updateMarginInfo() {
 
 function updateLivePrice(price) {
   if(price<=0) return;
-  var prev = lastPrice;
-  lastPrice = price;
+  var prev = headerPrice;
+  headerPrice = price;
   var el = document.getElementById('hdrPrice');
   el.textContent = price.toFixed(2);
   if(prev>0){
@@ -1500,10 +1497,6 @@ function connectFinnhubWS() {
       // typeがtradeまたはtypeなしのdataがある場合
       if(msg.data && msg.data.length) {
         var latestTrade = msg.data[msg.data.length - 1];
-        // tが秒かミリ秒か判定して統一
-        var rawT = latestTrade.t;
-        // 2000年以降のUNIX秒は1000000000以上、ミリ秒は1000000000000以上
-        finnhubLastTimestamp = rawT > 9999999999 ? rawT : rawT * 1000;
         var price = parseFloat(latestTrade.p);
         if(price > 0) {
           updateLivePrice(price);
@@ -1524,45 +1517,6 @@ function connectFinnhubWS() {
   };
 
   tdWs.onerror = function() { tdWsConnected = false; };
-}
-
-function updateCurrentCandle(price) {
-  // M1/M5のみリアルタイム更新、それ以外は何もしない
-  if(currentTf !== '1' && currentTf !== '5') return;
-
-  if(!chartData.length || !chartInstance) return;
-  if(!price || price < 1000 || price > 10000) return;
-  if(lastPrice > 0 && Math.abs(price - lastPrice) > 50) return;
-
-  var tfMs = {'1':60000,'5':300000};
-  var tfDuration = tfMs[currentTf] || 60000;
-  var now = finnhubLastTimestamp || Date.now();
-  var candleStart = Math.floor(now / tfDuration) * tfDuration;
-  var lastCandle = chartData[chartData.length - 1];
-
-  if(candleStart > lastCandle.t + tfDuration * 0.5) {
-    var newCandle = {t: candleStart, o: price, h: price, l: price, c: price, bt: ''};
-    chartData.push(newCandle);
-    _cv.candles = chartData;
-    currentCandleData = newCandle;
-    currentCandleStartTime = candleStart;
-  } else {
-    if(!currentCandleData || currentCandleData.t !== lastCandle.t) {
-      currentCandleData = lastCandle;
-      currentCandleStartTime = lastCandle.t;
-    }
-    currentCandleData.c = price;
-    if(price > currentCandleData.h) currentCandleData.h = price;
-    if(price < currentCandleData.l) currentCandleData.l = price;
-  }
-
-  // ビューが末尾に近ければY軸・vMaxも更新
-  if(_cv.vMax >= _cv.candles.length - 2) {
-    _cv.vMax = _cv.candles.length - 1;
-    _fitY(_cv.vMin, _cv.vMax);
-  }
-  scheduleChartUpdate();
-  if(mt5Positions.length > 0) refreshPositionPnL(price);
 }
 
 function disconnectAll(){
@@ -1855,7 +1809,7 @@ function openPosModal(){
     html += '</div>';
     html += '<div class="pos-item-grid">';
     html += '<div class="pos-item-cell"><div class="pos-item-label">建値</div><div class="pos-item-value">'+p.openPrice.toFixed(2)+'</div></div>';
-    html += '<div class="pos-item-cell"><div class="pos-item-label">現在値</div><div class="pos-item-value">'+(lastPrice||'---')+'</div></div>';
+    html += '<div class="pos-item-cell"><div class="pos-item-label">現在値</div><div class="pos-item-value">'+((mt5Bid || chartLastClose) > 0 ? (mt5Bid || chartLastClose).toFixed(2) : '---')+'</div></div>';
     html += '<div class="pos-item-cell"><div class="pos-item-label">ロット</div><div class="pos-item-value">'+(p.volume||0.01)+'lot</div></div>';
     html += '<div class="pos-item-cell"><div class="pos-item-label">スワップ</div><div class="pos-item-value">'+(p.swap||0).toFixed(0)+'</div></div>';
     var openTimeStr = p.openTime
@@ -2011,7 +1965,7 @@ async function analyzeChart(){
 function runFallbackAnalysis(){
   if(!chartData.length) return;
   var dow = calcDowTheory(chartData);
-  var price = lastPrice || chartData[chartData.length-1].c;
+  var price = mt5Bid || chartLastClose || chartData[chartData.length-1].c;
   var atr = dow.atr;
   var signal = dow.trend==='上昇トレンド'?'BUY':dow.trend==='下降トレンド'?'SELL':'WAIT';
   var strength = signal==='WAIT'?'弱':'中';
@@ -2060,7 +2014,7 @@ RSIやCCIなどのオシレーターは一切使わないこと。
 
 【チャートデータ】
 - 時間足: ${currentTf}
-- 現在価格（リアルタイム）: ${lastPrice}
+- 現在価格（リアルタイム）: ${mt5Bid || chartLastClose}
 - ※エントリー・TP・SLは必ずこの価格を基準に計算すること
 - スウィングハイ（直近）: ${JSON.stringify(recentHighPrices)}
 - スウィングロー（直近）: ${JSON.stringify(recentLowPrices)}
@@ -2172,7 +2126,7 @@ function renderAI(r){
   }
 
   var rrText = r.rr || '--';
-  var displayEntry = lastPrice > 0 ? lastPrice.toFixed(2) : (r.entry || '--');
+  var displayEntry = (mt5Bid || chartLastClose) > 0 ? (mt5Bid || chartLastClose).toFixed(2) : (r.entry || '--');
   var dowTrend  = r.dow_trend  || r.trend || '--';
   var dowBasis  = r.dow_basis  || '';
   var dowColor  = (dowTrend==='上昇トレンド')?'var(--green)'
@@ -2285,7 +2239,7 @@ function applyEntryLine(){
   var lot=parseFloat(document.getElementById('pLot').value)||0.1;
   var usdjpy=parseFloat(document.getElementById('pUsdJpy').value)||150;
   if(!entry||!chartData.length){alert('エントリー価格を入力してください');return;}
-  var price=lastPrice||chartData[chartData.length-1].c;
+  var price=mt5Bid||chartLastClose||chartData[chartData.length-1].c;
   var diff=dir==='buy'?(price-entry):(entry-price);
   var pnlJPY=Math.round(diff*lot*100*usdjpy);
   var isP=pnlJPY>=0;
@@ -2442,7 +2396,7 @@ function updateCloseButton(positions){
 function openTrdModal(side){
   _trdSide = side;
   _trdOrderType = 'market';
-  _trdPrice = side === 'buy' ? (_trdAsk || lastPrice) : (_trdBid || lastPrice);
+  _trdPrice = side === 'buy' ? (_trdAsk || mt5Bid) : (_trdBid || mt5Bid);
   var lot = parseFloat(document.getElementById('lotInput').value) || 0.01;
   var info = (side === 'buy' ? '▲ BUY' : '▼ SELL') + ' ' + lot.toFixed(2) + ' lot';
   document.getElementById('trdConfirmInfo').textContent = info;

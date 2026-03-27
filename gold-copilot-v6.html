@@ -672,6 +672,8 @@ var mt5Timer = null;
 var headerPrice = 0;    // ヘッダー表示用価格（Finnhub / MetaApi bid）
 var chartLastClose = 0; // chartData 末尾足の終値
 var mt5Bid = 0;         // MetaApi bid（現在価格ライン・マージン計算基準）
+var gcDebugLastSync = 0;  // 最終current-candle取得時刻
+var gcDebugGapCount = 0;  // ギャップ再同期発動回数
 var dayOpenPrice = 0;
 var mt5Balance = 0;
 var mt5Equity = 0;
@@ -799,6 +801,30 @@ function gcDebugMappedSummary(mapped) {
   console.log('[mapped] サマリー: ' + mapped.length + '本'
     + ' | 先頭 t=' + first.t + ' bt="' + first.bt + '"'
     + ' | 末尾 t=' + last.t  + ' bt="' + last.bt  + '"');
+}
+function gcDebugLog() {
+  if(!window.GC_DEBUG) return;
+  var tail = chartData.slice(-3).map(function(b, i){
+    return {
+      idx: chartData.length - 3 + i,
+      bt: b.bt || '--',
+      o: b.o, h: b.h, l: b.l, c: b.c,
+      isPartial: !!b.isPartial
+    };
+  });
+  console.table(tail);
+  console.log({
+    timeframe: currentTf,
+    mt5Bid: mt5Bid,
+    mt5Ask: _trdAsk || 0,
+    headerPrice: headerPrice,
+    chartLastClose: chartLastClose,
+    lastBarBt: chartData.length ? chartData[chartData.length-1].bt : '--',
+    lastBarT: chartData.length ? chartData[chartData.length-1].t : 0,
+    lastSync: gcDebugLastSync ? new Date(gcDebugLastSync).toISOString() : '--',
+    secSinceSync: gcDebugLastSync ? Math.round((Date.now()-gcDebugLastSync)/1000) : '--',
+    gapSyncCount: gcDebugGapCount
+  });
 }
 
 // ══ METAAPI CANDLES ══
@@ -1643,6 +1669,7 @@ async function refreshCurrentCandleFromAPI() {
 
   // ギャップ検出：1本以上ギャップがあれば全体再取得
   if(curNorm - lastNorm > tfMs){
+    gcDebugGapCount++;
     console.warn('[refreshCurrentCandle] ギャップ検出 lastNorm='+lastNorm+' curNorm='+curNorm+' diff='+(curNorm-lastNorm)/tfMs+'本 → loadChart再実行');
     loadChart(currentTf);
     return;
@@ -1674,6 +1701,8 @@ async function refreshCurrentCandleFromAPI() {
     _cv.vMax = _cv.candles.length - 1;
     _fitY(_cv.vMin, _cv.vMax);
   }
+  gcDebugLastSync = Date.now();
+  gcDebugLog();
   scheduleChartUpdate();
 }
 

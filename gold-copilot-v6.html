@@ -681,6 +681,7 @@ var tradeMarks = [];
 var tdWs = null;
 var tdWsConnected = false;
 var chartLoadedWithMT5 = false; // MT5データでチャートを読み込み済みフラグ
+var followLatest = true;        // true=末尾追従 / false=ユーザーがパン中
 
 // ══ INIT ══
 window.addEventListener('DOMContentLoaded', function(){
@@ -1060,15 +1061,31 @@ function _calcMAArr(candles, period){
   }
   return result;
 }
+function getInitialVisibleCount(tf) {
+  var map = {'1':80,'5':70,'15':50,'60':40,'240':30,'1D':30,'1W':26};
+  return map[tf] || 50;
+}
+function resetViewportToLatest() {
+  if(!_cv.candles.length) return;
+  var n = _cv.candles.length;
+  var visibleCount = getInitialVisibleCount(currentTf);
+  var i1 = n - 1;
+  var i0 = Math.max(0, i1 - visibleCount + 1);
+  _cv.vMin = i0;
+  _cv.vMax = i1;
+  _fitY(i0, i1);
+  console.log('[resetViewportToLatest] i0:', i0, 'i1:', i1, 'visibleCount:', visibleCount,
+    'visible先頭bt:', _cv.candles[i0] ? _cv.candles[i0].bt : '--',
+    'visible末尾bt:', _cv.candles[i1] ? _cv.candles[i1].bt : '--');
+}
 function buildChart(candles, lines) {
   console.log('[buildChart] candles:', candles.length,
     '先頭bt:', candles[0]?.bt,
     '末尾bt:', candles[candles.length-1]?.bt);
+  followLatest = true;
   _cv.candles = candles;
   _cv.lines   = lines || [];
-  _cv.vMin    = 0;
-  _cv.vMax    = candles.length - 1;
-  _fitY(0, candles.length - 1);
+  resetViewportToLatest();
   _cv.ma20 = _calcMAArr(candles, 20);
   _cv.ma50 = _calcMAArr(candles, 50);
   chartInstance = {
@@ -1719,7 +1736,9 @@ async function refreshCurrentCandleFromAPI() {
     if(chartData[_pi].isPartial) chartData[_pi].isPartial = false;
   }
 
-  if(_cv.vMax >= _cv.candles.length - 2) {
+  if(followLatest) {
+    resetViewportToLatest();
+  } else if(_cv.vMax >= _cv.candles.length - 2) {
     _cv.vMax = _cv.candles.length - 1;
     _fitY(_cv.vMin, _cv.vMax);
   }
@@ -2340,6 +2359,7 @@ function initTouchZoom(){
     if(!_cv.candles.length) return;
     var total=_cv.candles.length;
     if(e.touches.length===1&&_tz.isPan){
+      followLatest = false;
       var dx=e.touches[0].clientX-_tz.lastX; _tz.lastX=e.touches[0].clientX;
       var range=_tz.vMax-_tz.vMin;
       var shift=-dx/c.offsetWidth*range;
@@ -2349,6 +2369,7 @@ function initTouchZoom(){
       _fitY(_cv.vMin,_cv.vMax);
       scheduleChartUpdate();
     } else if(e.touches.length===2){
+      followLatest = false;
       var dx2=e.touches[0].clientX-e.touches[1].clientX;
       var dy2=e.touches[0].clientY-e.touches[1].clientY;
       var dist=Math.sqrt(dx2*dx2+dy2*dy2);
@@ -2369,6 +2390,7 @@ function initTouchZoom(){
   c.addEventListener('wheel',function(e){
     e.preventDefault();
     if(!_cv.candles.length) return;
+    followLatest = false;
     var total=_cv.candles.length;
     var range=_cv.vMax-_cv.vMin;
     var factor=e.deltaY>0?1.15:0.87;
@@ -2389,6 +2411,7 @@ function initTouchZoom(){
   });
   window.addEventListener('mousemove',function(e){
     if(!_mouse.isDragging||!_cv.candles.length) return;
+    followLatest = false;
     var total=_cv.candles.length;
     var range=_mouse.vMax-_mouse.vMin;
     var shift=-(e.clientX-_mouse.startX)/c.offsetWidth*range;
@@ -2405,8 +2428,8 @@ function initTouchZoom(){
   // ── ダブルクリック/ダブルタップでリセット ──
   function resetView(){
     if(!_cv.candles.length) return;
-    _cv.vMin=0; _cv.vMax=_cv.candles.length-1;
-    _fitY(_cv.vMin,_cv.vMax);
+    followLatest = true;
+    resetViewportToLatest();
     redrawChart();
   }
   c.addEventListener('dblclick',resetView);

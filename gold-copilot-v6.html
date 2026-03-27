@@ -1686,6 +1686,13 @@ async function refreshCurrentCandleFromAPI() {
   } else if(curNorm > lastNorm) {
     // 新足開始：前の足を確定化してから追加
     delete last.isPartial;
+    console.log('BAR_CONFIRMED', {
+      bt: last.bt,
+      o: last.o,
+      h: last.h,
+      l: last.l,
+      c: last.c
+    });
     chartData.push(curCandle);
     _cv.candles = chartData;
     // 確定足が増えたタイミングでのみダウ理論バッジを更新

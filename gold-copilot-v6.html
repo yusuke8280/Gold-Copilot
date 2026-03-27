@@ -908,11 +908,9 @@ function _fitY(i0, i1) {
     if(c && c.l>100){ ls.push(c.l); hs.push(c.h); }
   }
   if(!ls.length) return;
-  overlayLines.concat(entryLines).forEach(function(l){
-    if(l.price>1000 && l.price<100000){ ls.push(l.price); hs.push(l.price); }
-  });
-  _cv.yMin = Math.min.apply(null,ls)*0.9994;
-  _cv.yMax = Math.max.apply(null,hs)*1.0006;
+  // Y軸はローソク足のhigh/lowのみ（S/Rライン除外）、上下0.5% padding
+  _cv.yMin = Math.min.apply(null,ls)*0.995;
+  _cv.yMax = Math.max.apply(null,hs)*1.005;
 }
 
 function buildChart(candles, lines) {
@@ -1006,8 +1004,8 @@ function redrawChart() {
     var cx=xOf(ci);
     var isBull=c.c>=c.o;
     var col=isBull?'rgba(0,217,126,0.85)':'rgba(255,77,106,0.85)';
-    // ヒゲ（high-low）
-    ctx.strokeStyle=col; ctx.lineWidth=Math.max(1,candleW*0.15);
+    // ヒゲ（high-low）1px細線
+    ctx.strokeStyle=col; ctx.lineWidth=1;
     ctx.beginPath(); ctx.moveTo(cx,yOf(c.h)); ctx.lineTo(cx,yOf(c.l)); ctx.stroke();
     // 実体（open-close）
     var bTop=yOf(Math.max(c.o,c.c)), bBot=yOf(Math.min(c.o,c.c));
@@ -1407,9 +1405,9 @@ function renderPositions(){
   if(mt5Positions.length > 0) {
     // chartDataがない or Y軸範囲がMT5価格と大きくずれている場合は再読み込み
     var needReload = !chartData.length;
-    if(!needReload && chartInstance) {
-      var yMin = chartInstance.options.scales.y.min || 0;
-      var yMax = chartInstance.options.scales.y.max || 0;
+    if(!needReload && _cv.yMin && _cv.yMax) {
+      var yMin = _cv.yMin;
+      var yMax = _cv.yMax;
       var entryPrice = entryLines[0] ? entryLines[0].price : 0;
       if(entryPrice > 0 && (entryPrice < yMin || entryPrice > yMax)) {
         needReload = true;

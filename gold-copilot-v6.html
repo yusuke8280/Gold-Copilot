@@ -1662,7 +1662,7 @@ async function refreshCurrentCandleFromAPI() {
   var r;
   try {
     r = await fetch(
-      'https://mt-client-api-v1.london.agiliumtrade.ai/users/current/accounts/'+MT5_ACCOUNT_ID+'/symbols/XAUUSDs/current-candles/'+timeframe,
+      'https://mt-market-data-client-api-v1.london.agiliumtrade.ai/users/current/accounts/'+MT5_ACCOUNT_ID+'/symbols/XAUUSDs/current-candles/'+timeframe,
       {headers:{'auth-token':MT5_TOKEN}});
   } catch(e){
     console.warn('[refreshCurrentCandle] fetch失敗:', e);

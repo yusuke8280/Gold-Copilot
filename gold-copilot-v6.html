@@ -766,7 +766,7 @@ function initChartSize() {
 async function loadChart(tf) {
   console.log('[loadChart開始] tf:', tf, 'mt5Connected:', mt5Connected, 'MT5_TOKEN:', MT5_TOKEN ? '有' : '無', 'MT5_ACCOUNT_ID:', MT5_ACCOUNT_ID ? '有' : '無');
   document.getElementById('chartLoading').classList.add('show');
-  var count = tf==='1'?120:tf==='5'?120:tf==='15'?100:tf==='60'?168:tf==='240'?120:60;
+  var count = tf==='1'?200:tf==='5'?200:tf==='15'?300:tf==='60'?300:tf==='240'?200:100;
   var candles = null;
   var source = 'DEMO';
 

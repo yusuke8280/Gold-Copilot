@@ -755,7 +755,10 @@ function initChartSize() {
   var dpr = window.devicePixelRatio || 1;
   canvas.width = vw * dpr;
   canvas.height = chartH * dpr;
-  if(_cv.candles && _cv.candles.length) redrawChart();
+  if(_cv.candles && _cv.candles.length) {
+    console.log('[resize] 再描画実行');
+    redrawChart();
+  }
 }
 
 // ══ LOAD CHART ══
@@ -981,6 +984,9 @@ async function fetchMetaApiCandles(tf, count) {
       console.groupEnd();
     }
 
+    console.log('[MetaApi] 取得件数:', mapped.length,
+      '先頭bt:', mapped[0]?.bt,
+      '末尾bt:', mapped[mapped.length-1]?.bt);
     return mapped;
   } catch(e) { console.log('[MetaApi] catch error:', e); return null; }
 }
@@ -1055,6 +1061,9 @@ function _calcMAArr(candles, period){
   return result;
 }
 function buildChart(candles, lines) {
+  console.log('[buildChart] candles:', candles.length,
+    '先頭bt:', candles[0]?.bt,
+    '末尾bt:', candles[candles.length-1]?.bt);
   _cv.candles = candles;
   _cv.lines   = lines || [];
   _cv.vMin    = 0;
@@ -1124,6 +1133,12 @@ function redrawChart() {
   var i0 = Math.max(0,     Math.floor(vMin));
   var i1 = Math.min(n - 1, Math.ceil(vMax));
   var visibleCount = vMax - vMin + 1;
+
+  if(window.GC_DEBUG) console.log('[redrawChart] i0:', i0, 'i1:', i1,
+    'visibleCount:', visibleCount,
+    'visible先頭bt:', candles[i0]?.bt,
+    'visible末尾bt:', candles[i1]?.bt,
+    'tf:', currentTf, 'mt5Bid:', mt5Bid);
 
   function xOf(idx){ return padL + (idx - vMin) / (vMax - vMin) * plotW; }
   function yOf(p)  { return padT + (1 - (p - yMin) / (yMax - yMin)) * plotH; }

@@ -1652,38 +1652,75 @@ async function fetchLivePrice(){
 // fetchMT5Data（10秒毎）から呼ばれる。Finnhubは使わない。
 async function refreshCurrentCandleFromAPI() {
   if(!MT5_TOKEN || !MT5_ACCOUNT_ID || !chartData.length) return;
-  var tfMap = {'1':'1m','5':'5m','15':'15m','60':'1h','240':'4h','1D':'1d','1W':'1w'};
+  var tfMap    = {'1':'1m','5':'5m','15':'15m','60':'1h','240':'4h','1D':'1d','1W':'1w'};
+  var tfMsMap  = {'1':60000,'5':300000,'15':900000,'60':3600000,'240':14400000,'1D':86400000,'1W':604800000};
   var timeframe = tfMap[currentTf];
-  if(!timeframe) return;
+  var tfMs      = tfMsMap[currentTf];
+  if(!timeframe || !tfMs) return;
+
+  // API失敗時は chartData を変更せず warn のみ
+  var r;
   try {
-    var r = await fetch(
+    r = await fetch(
       'https://mt-client-api-v1.london.agiliumtrade.ai/users/current/accounts/'+MT5_ACCOUNT_ID+'/symbols/XAUUSDs/current-candles/'+timeframe,
       {headers:{'auth-token':MT5_TOKEN}});
-    if(!r.ok) return;
-    var cur = await r.json();
-    if(!cur || cur.open == null) return;
-    var curCandle = {t: new Date(cur.time).getTime(), bt: cur.brokerTime,
-      o: +cur.open, h: +cur.high, l: +cur.low, c: +cur.close, isPartial: true};
-    var last = chartData[chartData.length - 1];
-    if(last.t === curCandle.t) {
-      // 同じ足を更新（isPartial 維持）
-      last.o = curCandle.o; last.h = curCandle.h;
-      last.l = curCandle.l; last.c = curCandle.c;
-      last.isPartial = true;
-    } else if(curCandle.t > last.t) {
-      // 新足開始：前の足を確定化してから追加
-      delete last.isPartial;
-      chartData.push(curCandle);
-      _cv.candles = chartData;
-      // 確定足が増えたタイミングでのみダウ理論バッジを更新
-      updateDowBadge(calcDowTheory(chartData));
-    }
-    if(_cv.vMax >= _cv.candles.length - 2) {
-      _cv.vMax = _cv.candles.length - 1;
-      _fitY(_cv.vMin, _cv.vMax);
-    }
-    scheduleChartUpdate();
-  } catch(e){ console.log('[refreshCurrentCandle] error', e); }
+  } catch(e){
+    console.warn('[refreshCurrentCandle] fetch失敗:', e);
+    return;
+  }
+  if(!r.ok){
+    console.warn('[refreshCurrentCandle] HTTP', r.status);
+    return;
+  }
+  var cur;
+  try { cur = await r.json(); } catch(e){
+    console.warn('[refreshCurrentCandle] JSON parse失敗:', e);
+    return;
+  }
+  if(!cur || cur.open == null){
+    console.warn('[refreshCurrentCandle] レスポンスが不正:', cur);
+    return;
+  }
+
+  // 同一足判定：時間足ミリ秒で正規化した値で比較
+  var curNorm  = Math.floor(Date.parse(cur.time) / tfMs) * tfMs;
+  var last     = chartData[chartData.length - 1];
+  var lastNorm = Math.floor(last.t / tfMs) * tfMs;
+
+  // ギャップ検出：1本以上ギャップがあれば全体再取得
+  if(curNorm - lastNorm > tfMs){
+    console.warn('[refreshCurrentCandle] ギャップ検出 lastNorm='+lastNorm+' curNorm='+curNorm+' diff='+(curNorm-lastNorm)/tfMs+'本 → loadChart再実行');
+    loadChart(currentTf);
+    return;
+  }
+
+  var curCandle = {t: curNorm, bt: cur.brokerTime,
+    o: +cur.open, h: +cur.high, l: +cur.low, c: +cur.close, isPartial: true};
+
+  if(curNorm === lastNorm) {
+    // 同じ足を更新（isPartial 維持）
+    last.o = curCandle.o; last.h = curCandle.h;
+    last.l = curCandle.l; last.c = curCandle.c;
+    last.isPartial = true;
+  } else if(curNorm > lastNorm) {
+    // 新足開始：前の足を確定化してから追加
+    delete last.isPartial;
+    chartData.push(curCandle);
+    _cv.candles = chartData;
+    // 確定足が増えたタイミングでのみダウ理論バッジを更新
+    updateDowBadge(calcDowTheory(chartData));
+  }
+
+  // isPartial の一意性保証：末尾以外はすべて false に
+  for(var _pi = 0; _pi < chartData.length - 1; _pi++){
+    if(chartData[_pi].isPartial) chartData[_pi].isPartial = false;
+  }
+
+  if(_cv.vMax >= _cv.candles.length - 2) {
+    _cv.vMax = _cv.candles.length - 1;
+    _fitY(_cv.vMin, _cv.vMax);
+  }
+  scheduleChartUpdate();
 }
 
 function renderPositions(){

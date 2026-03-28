@@ -1139,7 +1139,8 @@ function _parseBt(bt) {
     mi: parseInt(timeParts[1], 10)
   };
 }
-function _makeXLabel(c, prevC, tf) {
+function _makeXLabel(c, prevC, tf, ppc) {
+  // ppc = pixelsPerCandle
   var cur = _parseBt(c.bt);
   if(!cur) {
     // bt なし: t(unix ms) から UTC フォールバック
@@ -1154,29 +1155,33 @@ function _makeXLabel(c, prevC, tf) {
   var hh = cur.h.toString().padStart(2,'0');
   var mm = cur.mi.toString().padStart(2,'0');
   if(tf === '1') {
-    // M1: 日付境界→M/D、15分区切り→HH:mm
-    if(isNewDay)          return cur.mo + '/' + cur.d;
-    if(cur.mi % 15 === 0) return hh + ':' + mm;
+    if(isNewDay)             return cur.mo + '/' + cur.d;
+    if(ppc >= 20)            return hh + ':' + mm;          // 毎足
+    if(ppc >= 8  && cur.mi % 5  === 0) return hh + ':' + mm; // 5分
+    if(ppc >= 4  && cur.mi % 15 === 0) return hh + ':' + mm; // 15分
+    if(cur.mi % 30 === 0)    return hh + ':' + mm;          // 30分
     return null;
   }
   if(tf === '5') {
-    // M5: 日付境界→M/D、1時間区切り→HH:mm（30分は密集時のみ）
-    if(isNewDay)          return cur.mo + '/' + cur.d;
-    if(cur.mi === 0)      return hh + ':00';
-    if(cur.mi % 30 === 0) return hh + ':' + mm;
+    if(isNewDay)             return cur.mo + '/' + cur.d;
+    if(ppc >= 20)            return hh + ':' + mm;          // 毎足(5分)
+    if(ppc >= 8  && cur.mi % 15 === 0) return hh + ':' + mm; // 15分
+    if(ppc >= 4  && cur.mi % 30 === 0) return hh + ':' + mm; // 30分
+    if(cur.mi === 0)         return hh + ':00';             // 1時間
     return null;
   }
   if(tf === '15') {
-    // M15: 日付境界→M/D、1時間区切り→HH:mm
-    if(isNewDay)     return cur.mo + '/' + cur.d;
-    if(cur.mi === 0) return hh + ':00';
+    if(isNewDay)             return cur.mo + '/' + cur.d;
+    if(ppc >= 20)            return hh + ':' + mm;          // 毎足(15分)
+    if(ppc >= 8  && cur.mi === 0)              return hh + ':00'; // 1時間
+    if(cur.h % 3 === 0 && cur.mi === 0)        return hh + ':00'; // 3時間
     return null;
   }
   if(tf === '60') {
-    // H1: 日付境界→M/D、4時間区切り→HH:mm
-    if(isNewDay)         return cur.mo + '/' + cur.d;
-    if(cur.h % 4 === 0)  return hh + ':00';
-    return null;
+    if(isNewDay)             return cur.mo + '/' + cur.d;
+    if(ppc >= 20)            return hh + ':00';             // 毎足(1時間)
+    if(ppc >= 8  && cur.h % 4 === 0) return hh + ':00';    // 4時間
+    return null;                                            // それ以下は日付境界のみ
   }
   if(tf === '240') {
     // H4: 日付境界→M/D のみ
@@ -1349,18 +1354,19 @@ function redrawChart() {
     );
   }
 
-  // X軸ラベル（TF別ルール + 最小ピクセル間隔で間引き）
+  // X軸ラベル（TF別ルール + ズームレベル + 最小ピクセル間隔で間引き）
   // X座標はindexベースを維持。bt は UTC変換せずそのままパース。
   ctx.fillStyle = '#a0c0e0';
   ctx.font      = '11px Space Mono, monospace';
   ctx.textAlign = 'center';
   var MIN_LABEL_PX = 52;
-  // 1パス: TFルールでラベル候補を収集
+  var pixelsPerCandle = plotW / visibleCount;
+  // 1パス: TFルール+ズームレベルでラベル候補を収集
   var _lblCands = [];
   for(var xi = i0; xi <= i1; xi++){
     var xc = candles[xi];
     if(!xc) continue;
-    var _lbl = _makeXLabel(xc, xi > 0 ? candles[xi-1] : null, currentTf);
+    var _lbl = _makeXLabel(xc, xi > 0 ? candles[xi-1] : null, currentTf, pixelsPerCandle);
     if(_lbl) _lblCands.push({px: xOf(xi), label: _lbl});
   }
   // 2パス: 最小ピクセル間隔で間引いて描画

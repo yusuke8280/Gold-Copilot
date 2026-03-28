@@ -1122,6 +1122,61 @@ function buildChart(candles, lines) {
   redrawChart();
   updateDowBadge(calcDowTheory(candles));
 }
+// X軸ラベル用ヘルパー
+// bt 例: "2026.03.28 10:15:00"
+function _parseBt(bt) {
+  if(!bt) return null;
+  var m = bt.match(/^(\d{4})\.(\d{2})\.(\d{2}) (\d{2}):(\d{2})/);
+  if(!m) return null;
+  return {mo:+m[2], d:+m[3], h:+m[4], mi:+m[5]};
+}
+function _makeXLabel(c, prevC, tf) {
+  var cur = _parseBt(c.bt);
+  if(!cur) {
+    // bt なし: t(unix ms) から UTC フォールバック
+    var d = new Date(c.t);
+    return (d.getUTCMonth()+1).toString().padStart(2,'0') + '/'
+         + d.getUTCDate().toString().padStart(2,'0') + ' '
+         + d.getUTCHours().toString().padStart(2,'0') + ':'
+         + d.getUTCMinutes().toString().padStart(2,'0');
+  }
+  var prv = prevC ? _parseBt(prevC.bt) : null;
+  var isNewDay = !prv || prv.d !== cur.d;
+  var hh = cur.h.toString().padStart(2,'0');
+  var mm = cur.mi.toString().padStart(2,'0');
+  if(tf === '1') {
+    // M1: 日付境界→M/D、15分区切り→HH:mm
+    if(isNewDay)          return cur.mo + '/' + cur.d;
+    if(cur.mi % 15 === 0) return hh + ':' + mm;
+    return null;
+  }
+  if(tf === '5') {
+    // M5: 日付境界→M/D、1時間区切り→HH:mm（30分は密集時のみ）
+    if(isNewDay)          return cur.mo + '/' + cur.d;
+    if(cur.mi === 0)      return hh + ':00';
+    if(cur.mi % 30 === 0) return hh + ':' + mm;
+    return null;
+  }
+  if(tf === '15') {
+    // M15: 日付境界→M/D、1時間区切り→HH:mm
+    if(isNewDay)     return cur.mo + '/' + cur.d;
+    if(cur.mi === 0) return hh + ':00';
+    return null;
+  }
+  if(tf === '60') {
+    // H1: 日付境界→M/D、4時間区切り→HH:mm
+    if(isNewDay)         return cur.mo + '/' + cur.d;
+    if(cur.h % 4 === 0)  return hh + ':00';
+    return null;
+  }
+  if(tf === '240') {
+    // H4: 日付境界→M/D のみ
+    if(isNewDay) return cur.mo + '/' + cur.d;
+    return null;
+  }
+  // D1/W1: 常に M/D
+  return cur.mo + '/' + cur.d;
+}
 // 未確定足判定：bar.isPartial フラグを参照する
 // fetchMetaApiCandles / refreshCurrentCandleFromAPI で設定される
 function _isUnconfirmed(idx, n){
@@ -1285,26 +1340,26 @@ function redrawChart() {
     );
   }
 
-  // X軸ラベル（btLabel 優先、なければ t UTC フォールバック）
-  // brokerTime を Date parse・UTC変換しない方針を維持
-  var pixelsPerCandle = plotW / visibleCount;
-  var labelInterval = Math.max(1, Math.ceil(60 / pixelsPerCandle));
+  // X軸ラベル（TF別ルール + 最小ピクセル間隔で間引き）
+  // X座標はindexベースを維持。bt は UTC変換せずそのままパース。
   ctx.fillStyle = '#a0c0e0';
   ctx.font      = '11px Space Mono, monospace';
   ctx.textAlign = 'center';
+  var MIN_LABEL_PX = 52;
+  // 1パス: TFルールでラベル候補を収集
+  var _lblCands = [];
   for(var xi = i0; xi <= i1; xi++){
-    if((xi - i0) % labelInterval !== 0) continue;
     var xc = candles[xi];
     if(!xc) continue;
-    var label = xc.btLabel || '';
-    if(!label){
-      var d = new Date(xc.t);
-      label = (d.getUTCMonth()+1).toString().padStart(2,'0') + '/'
-            + d.getUTCDate().toString().padStart(2,'0')       + ' '
-            + d.getUTCHours().toString().padStart(2,'0')      + ':'
-            + d.getUTCMinutes().toString().padStart(2,'0');
-    }
-    ctx.fillText(label, xOf(xi), padT + plotH + 24);
+    var _lbl = _makeXLabel(xc, xi > 0 ? candles[xi-1] : null, currentTf);
+    if(_lbl) _lblCands.push({px: xOf(xi), label: _lbl});
+  }
+  // 2パス: 最小ピクセル間隔で間引いて描画
+  var _lastPx = -Infinity;
+  for(var li = 0; li < _lblCands.length; li++){
+    if(_lblCands[li].px - _lastPx < MIN_LABEL_PX) continue;
+    ctx.fillText(_lblCands[li].label, _lblCands[li].px, padT + plotH + 24);
+    _lastPx = _lblCands[li].px;
   }
 
   // 現在価格ライン（MetaApi bid のみ）

@@ -837,14 +837,13 @@ async function fetchMetaApiCandles(tf, count) {
   var timeframe = tfMap[tf] || '15m';
   var secMap = {'1':60,'5':300,'15':900,'60':3600,'240':14400,'1D':86400,'1W':604800};
   var tfMs = (secMap[tf] || 900) * 1000;
-  var histLimit = count * 3;
-  var startTime = new Date(Date.now() - count * tfMs * 4).toISOString();
+  var histLimit = Math.min(count * 3, 1000);
   var headers = {'auth-token': MT5_TOKEN};
 
-  // ① 過去データ（複数本）
+  // ① 過去データ（複数本）- startTime なし → MetaApi が最新足から遡って返す
   var histUrl = 'https://mt-market-data-client-api-v1.london.agiliumtrade.ai/users/current/accounts/'
     + MT5_ACCOUNT_ID + '/historical-market-data/symbols/XAUUSDs/timeframes/'
-    + timeframe + '/candles?startTime=' + encodeURIComponent(startTime) + '&limit=' + histLimit;
+    + timeframe + '/candles?limit=' + histLimit;
   console.log('[MetaApi] 過去データURL:', histUrl);
 
   // ② 現在のローソク足（1本）

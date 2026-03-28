@@ -1126,9 +1126,18 @@ function buildChart(candles, lines) {
 // bt 例: "2026.03.28 10:15:00"
 function _parseBt(bt) {
   if(!bt) return null;
-  var m = bt.match(/^(\d{4})\.(\d{2})\.(\d{2}) (\d{2}):(\d{2})/);
-  if(!m) return null;
-  return {mo:+m[2], d:+m[3], h:+m[4], mi:+m[5]};
+  var s = bt.toString();
+  var parts = s.split(' ');
+  if(parts.length < 2) return null;
+  var dateParts = parts[0].split('-');
+  var timeParts = parts[1].split(':');
+  if(dateParts.length < 3 || timeParts.length < 2) return null;
+  return {
+    mo: parseInt(dateParts[1], 10),
+    d:  parseInt(dateParts[2], 10),
+    h:  parseInt(timeParts[0], 10),
+    mi: parseInt(timeParts[1], 10)
+  };
 }
 function _makeXLabel(c, prevC, tf) {
   var cur = _parseBt(c.bt);

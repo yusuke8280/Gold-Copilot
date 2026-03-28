@@ -837,13 +837,14 @@ async function fetchMetaApiCandles(tf, count) {
   var timeframe = tfMap[tf] || '15m';
   var secMap = {'1':60,'5':300,'15':900,'60':3600,'240':14400,'1D':86400,'1W':604800};
   var tfMs = (secMap[tf] || 900) * 1000;
-  var startTime = new Date(Date.now() - count * tfMs * 2).toISOString();
+  var histLimit = count * 3;
+  var startTime = new Date(Date.now() - count * tfMs * 4).toISOString();
   var headers = {'auth-token': MT5_TOKEN};
 
   // ① 過去データ（複数本）
   var histUrl = 'https://mt-market-data-client-api-v1.london.agiliumtrade.ai/users/current/accounts/'
     + MT5_ACCOUNT_ID + '/historical-market-data/symbols/XAUUSDs/timeframes/'
-    + timeframe + '/candles?startTime=' + encodeURIComponent(startTime) + '&limit=' + count;
+    + timeframe + '/candles?startTime=' + encodeURIComponent(startTime) + '&limit=' + histLimit;
   console.log('[MetaApi] 過去データURL:', histUrl);
 
   // ② 現在のローソク足（1本）
@@ -866,20 +867,26 @@ async function fetchMetaApiCandles(tf, count) {
     if(!Array.isArray(histData) || !histData.length) return null;
     console.log('[MetaApi] 取得件数:', histData.length, '最初:', histData[0].brokerTime, '最後:', histData[histData.length-1].brokerTime);
 
-    // ①をマッピング
+    // ①をマッピング（t昇順ソート後に末尾count本）
     var mapped = histData.map(function(v){
       return {t: new Date(v.time).getTime(), bt: v.brokerTime, o: +v.open, h: +v.high, l: +v.low, c: +v.close};
     }).sort(function(a,b){return a.t-b.t;}).slice(-count);
 
-    // ②の現在足を末尾に追加
+    console.log('[MetaApi] slice後 count:', mapped.length,
+      'first bt:', mapped[0]?.bt,
+      'last bt:', mapped[mapped.length-1]?.bt);
+
+    // ②の現在足を末尾に追加（バー開始時刻の正規化で重複判定）
     if(currentRes.ok) {
       var cur = await currentRes.json();
       console.log('[MetaApi] 現在足:', JSON.stringify(cur));
       if(cur && cur.open != null) {
         var curCandle = {t: new Date(cur.time).getTime(), bt: cur.brokerTime, o: +cur.open, h: +cur.high, l: +cur.low, c: +cur.close, isPartial: true};
-        // 同じ時刻の足が既にあれば置き換え、なければ追加
         var last = mapped[mapped.length-1];
-        if(last && last.t === curCandle.t) {
+        // バー開始時刻に正規化して一致判定（ミリ秒ずれによる重複防止）
+        var curNorm  = Math.floor(curCandle.t / tfMs) * tfMs;
+        var lastNorm = last ? Math.floor(last.t / tfMs) * tfMs : -1;
+        if(lastNorm === curNorm) {
           mapped[mapped.length-1] = curCandle;
         } else {
           mapped.push(curCandle);

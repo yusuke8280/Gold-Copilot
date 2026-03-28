@@ -680,8 +680,9 @@ var mt5Equity = 0;
 var tradeMarks = [];
 var tdWs = null;
 var tdWsConnected = false;
-var chartLoadedWithMT5 = false; // MT5データでチャートを読み込み済みフラグ
-var followLatest = true;        // true=末尾追従 / false=ユーザーがパン中
+var chartLoadedWithMT5 = false;    // MT5データでチャートを読み込み済みフラグ
+var followLatest = true;           // true=末尾追従 / false=ユーザーがパン中
+var chartRequestVersion = 0;       // 非同期競合防止: loadChart毎にインクリメント
 
 // ══ INIT ══
 window.addEventListener('DOMContentLoaded', function(){
@@ -764,7 +765,9 @@ function initChartSize() {
 
 // ══ LOAD CHART ══
 async function loadChart(tf) {
-  console.log('[loadChart開始] tf:', tf, 'mt5Connected:', mt5Connected, 'MT5_TOKEN:', MT5_TOKEN ? '有' : '無', 'MT5_ACCOUNT_ID:', MT5_ACCOUNT_ID ? '有' : '無');
+  chartRequestVersion++;
+  var _myVer = chartRequestVersion;
+  console.log('[loadChart開始] tf:', tf, 'reqVer:', _myVer, 'mt5Connected:', mt5Connected, 'MT5_TOKEN:', MT5_TOKEN ? '有' : '無', 'MT5_ACCOUNT_ID:', MT5_ACCOUNT_ID ? '有' : '無');
   document.getElementById('chartLoading').classList.add('show');
   var count = tf==='1'?200:tf==='5'?200:tf==='15'?300:tf==='60'?300:tf==='240'?200:100;
   var candles = null;
@@ -772,7 +775,7 @@ async function loadChart(tf) {
 
   // MT5接続済みの場合は全時間足でMetaApiを最優先
   if(MT5_TOKEN && MT5_ACCOUNT_ID && mt5Connected) {
-    candles = await fetchMetaApiCandles(tf, count);
+    candles = await fetchMetaApiCandles(tf, count, _myVer);
     if(candles && candles.length) source = 'MT5';
   }
 
@@ -832,7 +835,7 @@ function gcDebugLog() {
 }
 
 // ══ METAAPI CANDLES ══
-async function fetchMetaApiCandles(tf, count) {
+async function fetchMetaApiCandles(tf, count, reqVer) {
   var tfMap = {'1':'1m','5':'5m','15':'15m','60':'1h','240':'4h','1D':'1d','1W':'1w'};
   var timeframe = tfMap[tf] || '15m';
   var secMap = {'1':60,'5':300,'15':900,'60':3600,'240':14400,'1D':86400,'1W':604800};
@@ -858,13 +861,24 @@ async function fetchMetaApiCandles(tf, count) {
       fetch(currentUrl, {headers: headers})
     ]);
 
+    // 非同期競合チェック: 別TFへ切替済みなら破棄
+    if(reqVer !== chartRequestVersion) {
+      console.log('[MetaApi] stale response破棄 reqVer:', reqVer, '現在:', chartRequestVersion);
+      return null;
+    }
+
     if(!histRes.ok) {
       console.log('[MetaApi] 過去データ status:', histRes.status, await histRes.text());
       return null;
     }
     var histData = await histRes.json();
     if(!Array.isArray(histData) || !histData.length) return null;
-    console.log('[MetaApi] 取得件数:', histData.length, '最初:', histData[0].brokerTime, '最後:', histData[histData.length-1].brokerTime);
+
+    // hist末尾の生データをログ（TF確認用）
+    var _histRawLast = histData[histData.length-1];
+    console.log('[MetaApi] hist末尾 raw: timeframe:', _histRawLast?.timeframe,
+      'time:', _histRawLast?.time, 'bt:', _histRawLast?.brokerTime,
+      '取得件数:', histData.length, '先頭bt:', histData[0]?.brokerTime);
 
     // ①をマッピング（t昇順ソート後に末尾count本）
     var mapped = histData.map(function(v){
@@ -878,19 +892,27 @@ async function fetchMetaApiCandles(tf, count) {
     // ②の現在足を末尾に追加（バー開始時刻の正規化で重複判定）
     if(currentRes.ok) {
       var cur = await currentRes.json();
-      console.log('[MetaApi] 現在足:', JSON.stringify(cur));
+      // current-candle の生データをログ（TF混入確認用）
+      console.log('[MetaApi] 現在足raw: timeframe:', cur?.timeframe,
+        'time:', cur?.time, 'bt:', cur?.brokerTime,
+        '| 要求TF:', tf, '期待timeframe:', timeframe, 'URL:', currentUrl);
       if(cur && cur.open != null) {
-        var curCandle = {t: new Date(cur.time).getTime(), bt: cur.brokerTime, o: +cur.open, h: +cur.high, l: +cur.low, c: +cur.close, isPartial: true};
-        var last = mapped[mapped.length-1];
-        // バー開始時刻に正規化して一致判定（ミリ秒ずれによる重複防止）
-        var curNorm  = Math.floor(curCandle.t / tfMs) * tfMs;
-        var lastNorm = last ? Math.floor(last.t / tfMs) * tfMs : -1;
-        if(lastNorm === curNorm) {
-          mapped[mapped.length-1] = curCandle;
+        // TF不一致ガード: current-candle が別TFのものなら merge しない
+        if(cur.timeframe && cur.timeframe !== timeframe) {
+          console.warn('[MetaApi] 現在足TF不一致 → merge破棄: cur.timeframe=', cur.timeframe, '期待=', timeframe);
         } else {
-          mapped.push(curCandle);
+          var curCandle = {t: new Date(cur.time).getTime(), bt: cur.brokerTime, o: +cur.open, h: +cur.high, l: +cur.low, c: +cur.close, isPartial: true};
+          var last = mapped[mapped.length-1];
+          // バー開始時刻に正規化して一致判定（ミリ秒ずれによる重複防止）
+          var curNorm  = Math.floor(curCandle.t / tfMs) * tfMs;
+          var lastNorm = last ? Math.floor(last.t / tfMs) * tfMs : -1;
+          if(lastNorm === curNorm) {
+            mapped[mapped.length-1] = curCandle;
+          } else {
+            mapped.push(curCandle);
+          }
+          console.log('[MetaApi] merge後 last bt:', mapped[mapped.length-1]?.bt, 'count:', mapped.length);
         }
-        console.log('[MetaApi] 現在足を追加:', new Date(curCandle.t).toISOString(), 'o:', curCandle.o, 'h:', curCandle.h, 'l:', curCandle.l, 'c:', curCandle.c);
       }
     } else {
       console.log('[MetaApi] 現在足 status:', currentRes.status, await currentRes.text());

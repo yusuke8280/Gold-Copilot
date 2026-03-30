@@ -1385,21 +1385,21 @@ function redrawChart() {
 
   // ローソク足（ヒゲ→実体の順）
   var candleW = Math.min(
-    Math.max(1, plotW / visibleCount * 0.6),
-    40
+    Math.max(1, plotW / visibleCount * 0.5),
+    36
   );
   for(var ci = i0; ci <= i1; ci++){
     var c = candles[ci];
     if(!c) continue;
     var isBull        = c.c >= c.o;
     var isUnconfirmed = _isUnconfirmed(ci, n);
-    var baseCol = isBull ? '#00d97e' : '#ff4d6a';
+    var baseCol = isBull ? '#26a69a' : '#ef5350';
     var col = isUnconfirmed
-      ? (isBull ? 'rgba(0,217,126,0.45)' : 'rgba(255,77,106,0.45)')
+      ? (isBull ? 'rgba(38,166,154,0.45)' : 'rgba(239,83,80,0.45)')
       : baseCol;
 
-    // ヒゲ：X・Y ともに 0.5px 補正でシャープに
-    ctx.strokeStyle = col;
+    // ヒゲ：常に白・X・Y ともに 0.5px 補正でシャープに
+    ctx.strokeStyle = '#ffffff';
     ctx.lineWidth   = 1;
     ctx.setLineDash([]);
     ctx.beginPath();

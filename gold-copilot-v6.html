@@ -1696,6 +1696,8 @@ async function connectAll(){
   }
 }
 
+var _finnhubRetryCount = 0;
+
 function connectFinnhubWS() {
   if(!FINNHUB_KEY) return;
   if(tdWs) { tdWs.onclose = null; tdWs.close(); }
@@ -1704,6 +1706,7 @@ function connectFinnhubWS() {
 
   tdWs.onopen = function() {
     tdWsConnected = true;
+    _finnhubRetryCount = 0;
     console.log('Finnhub WS接続成功');
     tdWs.send(JSON.stringify({type: 'subscribe', symbol: 'OANDA:XAU_USD'}));
     tdWs.send(JSON.stringify({type: 'subscribe', symbol: 'FXCM:XAUUSD'}));
@@ -1731,8 +1734,11 @@ function connectFinnhubWS() {
   tdWs.onclose = function() {
     tdWsConnected = false;
     if(mt5Connected) {
-      console.log('Finnhub WS切断・5秒後再接続');
-      setTimeout(connectFinnhubWS, 5000);
+      var delays = [5000, 10000, 20000, 30000];
+      var delay = delays[Math.min(_finnhubRetryCount, delays.length - 1)];
+      _finnhubRetryCount++;
+      console.log('Finnhub WS切断・' + (delay/1000) + '秒後再接続 (試行' + _finnhubRetryCount + '回目)');
+      setTimeout(connectFinnhubWS, delay);
     }
   };
 

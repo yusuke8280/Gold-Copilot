@@ -1114,6 +1114,15 @@ function _fitY(i0, i1) {
   var range = (hi - lo) || 1;
   _cv.yMin = lo - range * 0.05;
   _cv.yMax = hi + range * 0.05;
+  var minYRange = {
+    '1':0.5,'5':1.0,'15':2.0,
+    '60':5.0,'240':10.0,'1D':20.0,'1W':50.0
+  }[currentTf] || 1.0;
+  if((_cv.yMax - _cv.yMin) < minYRange){
+    var mid = (_cv.yMax + _cv.yMin) / 2;
+    _cv.yMin = mid - minYRange / 2;
+    _cv.yMax = mid + minYRange / 2;
+  }
 }
 function _calcMAArr(candles, period){
   var n = candles.length;
@@ -2589,13 +2598,13 @@ function initTouchZoom(){
   // 時間足ごとのズーム上下限
   function _tfZoomLimits(){
     var map={
-      '1':  {min:20,max:120},
-      '5':  {min:20,max:100},
-      '15': {min:15,max:80},
-      '60': {min:10,max:60},
+      '1':  {min:30,max:120},
+      '5':  {min:24,max:100},
+      '15': {min:18,max:80},
+      '60': {min:12,max:60},
       '240':{min:8, max:40},
-      '1D': {min:8, max:40},
-      '1W': {min:8, max:40}
+      '1D': {min:6, max:30},
+      '1W': {min:6, max:30}
     };
     return map[currentTf]||{min:10,max:80};
   }
@@ -2993,6 +3002,27 @@ window.addEventListener('DOMContentLoaded', function(){
   // オーバーレイ外タップで閉じる
   document.getElementById('trdOverlay').addEventListener('click', function(e){
     if(e.target === this) closeTrdOverlay();
+  });
+
+  // タブ復帰・スマホ画面復帰時の自動再接続
+  document.addEventListener('visibilitychange', function(){
+    if(document.visibilityState === 'visible'){
+      console.log('[visibility] 復帰検知');
+      var now = Date.now();
+      if(!mt5Connected || (now - _lastDataUpdate) > 30000){
+        console.log('[visibility] 再接続開始');
+        connectAll();
+      } else {
+        loadChart(currentTf);
+      }
+    }
+  });
+
+  window.addEventListener('pageshow', function(e){
+    if(e.persisted){
+      console.log('[pageshow] キャッシュ復帰 → 再接続');
+      connectAll();
+    }
   });
 });
 

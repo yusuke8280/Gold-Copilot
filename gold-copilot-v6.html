@@ -441,7 +441,7 @@ canvas{display:block;width:100% !important;}
       <div class="price-change" id="hdrChange">XAUUSDs · MT5</div>
       <div id="hdrPct" style="font-size:10px;text-align:right;margin-top:2px;"></div>
     </div>
-    <div class="mt5-badge" id="mt5Badge" onclick="openSettings()">
+    <div class="mt5-badge" id="mt5Badge" onclick="onMt5BadgeClick()">
       <div class="mt5-dot"></div>
       <span id="mt5BadgeText">設定</span>
     </div>
@@ -1597,6 +1597,16 @@ function updateLivePrice(price) {
 }
 
 // ══ MT5 連動 ══
+function onMt5BadgeClick(){
+  var isStale = _lastDataUpdate > 0 && (Date.now() - _lastDataUpdate) / 1000 >= 30;
+  if(isStale || !mt5Connected){
+    if(confirm('MT5との接続が切れているか古い状態です。再接続しますか？')){
+      connectAll();
+      return;
+    }
+  }
+  openSettings();
+}
 function openSettings(){
   if(MT5_TOKEN) document.getElementById('mt5Token').value=MT5_TOKEN;
   if(MT5_ACCOUNT_ID) document.getElementById('mt5AccountId').value=MT5_ACCOUNT_ID;
@@ -1816,7 +1826,10 @@ async function fetchMT5Data(){
       if(mt5Timer){ clearInterval(mt5Timer); mt5Timer = null; }
       updateBadge(false);
       console.warn('[MT5接続] 3回連続失敗 → 切断扱い・自動再接続を予約');
+      showTrdToast('MT5接続失敗 — 自動再接続中...', 'var(--red)');
       scheduleReconnect();
+    } else if(_fetchFailCount >= 2) {
+      showTrdToast('価格取得失敗 — 再接続中', '#ff8c00');
     }
     return false;
   }
@@ -1864,8 +1877,13 @@ async function fetchLivePrice(){
       var ask=parseFloat(d.ask||0);
       if(bid>0){ mt5Bid = bid; updateLivePrice(bid); }
       if(ask>0||bid>0) updateTradePrices(ask||bid, bid);
+    } else {
+      showTrdToast('価格取得失敗', '#ff8c00');
     }
-  } catch(e){}
+  } catch(e){
+    console.warn('[fetchLivePrice] 失敗:', e);
+    showTrdToast('価格取得失敗', '#ff8c00');
+  }
 }
 
 // 未確定足をMetaApi current-candle で更新する
@@ -1886,15 +1904,18 @@ async function refreshCurrentCandleFromAPI() {
       {headers:{'auth-token':MT5_TOKEN}});
   } catch(e){
     console.warn('[refreshCurrentCandle] fetch失敗:', e);
+    showTrdToast('チャート同期失敗', '#ff8c00');
     return;
   }
   if(!r.ok){
     console.warn('[refreshCurrentCandle] HTTP', r.status);
+    showTrdToast('チャート同期失敗 (HTTP ' + r.status + ')', '#ff8c00');
     return;
   }
   var cur;
   try { cur = await r.json(); } catch(e){
     console.warn('[refreshCurrentCandle] JSON parse失敗:', e);
+    showTrdToast('チャート同期失敗', '#ff8c00');
     return;
   }
   if(!cur || cur.open == null){

@@ -2582,9 +2582,28 @@ function scheduleChartUpdate() {
     redrawChart();
   });
 }
-var _tz={isPan:false,lastX:0,pinchDist:0,pinchRange:0,vMin:0,vMax:0};
+var _tz={isPan:false,lastX:0,pinchDist:0,pinchRange:0,vMin:0,vMax:0,anchorIdx:0,anchorRelX:0};
 function initTouchZoom(){
   var c=document.getElementById('mainChart');
+
+  // 時間足ごとのズーム上下限
+  function _tfZoomLimits(){
+    var map={
+      '1':  {min:20,max:120},
+      '5':  {min:20,max:100},
+      '15': {min:15,max:80},
+      '60': {min:10,max:60},
+      '240':{min:8, max:40},
+      '1D': {min:8, max:40},
+      '1W': {min:8, max:40}
+    };
+    return map[currentTf]||{min:10,max:80};
+  }
+  // rangeをTF上下限 + total にクランプ
+  function _clampRange(range,total){
+    var lim=_tfZoomLimits();
+    return Math.max(lim.min, Math.min(Math.min(total,lim.max), range));
+  }
 
   c.addEventListener('touchstart',function(e){
     if(e.touches.length===1){
@@ -2597,6 +2616,12 @@ function initTouchZoom(){
       _tz.pinchDist=Math.sqrt(dx*dx+dy*dy);
       _tz.vMin=_cv.vMin; _tz.vMax=_cv.vMax;
       _tz.pinchRange=_cv.vMax-_cv.vMin;
+      // ピンチ中心足indexをアンカーとして記録
+      var midX=(e.touches[0].clientX+e.touches[1].clientX)/2;
+      var rect=c.getBoundingClientRect();
+      var relX=Math.max(0,Math.min(1,(midX-rect.left)/Math.max(1,rect.width)));
+      _tz.anchorIdx=_cv.vMin+relX*(_cv.vMax-_cv.vMin);
+      _tz.anchorRelX=relX;
     }
     e.preventDefault();
   },{passive:false});
@@ -2620,10 +2645,16 @@ function initTouchZoom(){
       var dy2=e.touches[0].clientY-e.touches[1].clientY;
       var dist=Math.sqrt(dx2*dx2+dy2*dy2);
       var scale=_tz.pinchDist/dist;
-      var range=Math.max(5,Math.min(total,_tz.pinchRange*scale));
-      var center=(_tz.vMin+_tz.vMax)/2;
-      _cv.vMin=Math.max(0,center-range/2);
-      _cv.vMax=Math.min(total-1,center+range/2);
+      var range=_clampRange(_tz.pinchRange*scale, total);
+      // ピンチ中心の現在画面位置を取得してアンカーを維持
+      var midX2=(e.touches[0].clientX+e.touches[1].clientX)/2;
+      var rect2=c.getBoundingClientRect();
+      var relX2=Math.max(0,Math.min(1,(midX2-rect2.left)/Math.max(1,rect2.width)));
+      var newVMin=_tz.anchorIdx-relX2*range;
+      var newVMax=newVMin+range;
+      if(newVMin<0){newVMin=0;newVMax=range;}
+      if(newVMax>total-1){newVMax=total-1;newVMin=Math.max(0,newVMax-range);}
+      _cv.vMin=newVMin; _cv.vMax=newVMax;
       _fitY(_cv.vMin,_cv.vMax);
       scheduleChartUpdate();
     }
@@ -2640,7 +2671,7 @@ function initTouchZoom(){
     var total=_cv.candles.length;
     var range=_cv.vMax-_cv.vMin;
     var factor=e.deltaY>0?1.15:0.87;
-    var newRange=Math.max(5,Math.min(total,range*factor));
+    var newRange=_clampRange(range*factor, total);
     var center=(_cv.vMin+_cv.vMax)/2;
     _cv.vMin=Math.max(0,center-newRange/2);
     _cv.vMax=Math.min(total-1,center+newRange/2);
@@ -2673,10 +2704,7 @@ function initTouchZoom(){
 
   // ── ダブルクリック/ダブルタップでリセット ──
   function resetView(){
-    if(!_cv.candles.length) return;
-    followLatest = true;
-    resetViewportToLatest();
-    redrawChart();
+    resetZoomToDefault();
   }
   c.addEventListener('dblclick',resetView);
   var lastTap=0;
@@ -2685,6 +2713,15 @@ function initTouchZoom(){
     if(now-lastTap<300) resetView();
     lastTap=now;
   });
+}
+
+// 標準表示へ復帰（外部からも呼び出し可）
+function resetZoomToDefault(){
+  if(!_cv.candles.length) return;
+  followLatest = true;
+  resetViewportToLatest();
+  _fitY(_cv.vMin, _cv.vMax);
+  redrawChart();
 }
 // ══ TRADE ══
 var _trdLot = 0.10;

@@ -1915,7 +1915,7 @@ async function refreshCurrentCandleFromAPI() {
   }
   if(!r.ok){
     console.warn('[refreshCurrentCandle] HTTP', r.status);
-    showTrdToast('チャート同期失敗 (HTTP ' + r.status + ')', '#ff8c00');
+    if(r.status !== 404) showTrdToast('チャート同期失敗 (HTTP ' + r.status + ')', '#ff8c00');
     return;
   }
   var cur;

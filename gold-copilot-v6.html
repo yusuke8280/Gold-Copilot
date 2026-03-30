@@ -691,6 +691,7 @@ var _lastDataUpdate = 0;           // 最終データ更新時刻 (Date.now())
 var _reconnectTimer = null;        // 自動再接続タイマー
 var _reconnectCount = 0;           // 再接続試行回数
 var _fetchFailCount = 0;           // fetchMT5Data 連続失敗回数
+var _orderInProgress = false;      // 発注処理中フラグ（二重送信防止）
 
 // ══ INIT ══
 window.addEventListener('DOMContentLoaded', function(){
@@ -1750,16 +1751,17 @@ function updateBadge(connected){
 }
 function updateStaleState(){
   var age = _lastDataUpdate > 0 ? (Date.now() - _lastDataUpdate) / 1000 : 0;
-  var badge = document.getElementById('mt5Badge');
+  var badge   = document.getElementById('mt5Badge');
   var buyBtn  = document.getElementById('trdBuyBtn');
   var sellBtn = document.getElementById('trdSellBtn');
   var isStale = _lastDataUpdate > 0 && age >= 30;
   if(badge){
     if(isStale) badge.classList.add('stale');
-    else         badge.classList.remove('stale');
+    else        badge.classList.remove('stale');
   }
-  if(buyBtn)  buyBtn.disabled  = isStale;
-  if(sellBtn) sellBtn.disabled = isStale;
+  var titleMsg = isStale ? 'データが古いため発注できません' : '';
+  if(buyBtn)  { buyBtn.disabled  = isStale; buyBtn.title  = titleMsg; }
+  if(sellBtn) { sellBtn.disabled = isStale; sellBtn.title = titleMsg; }
 }
 
 
@@ -2732,9 +2734,21 @@ function showTrdToast(msg, color){
 }
 
 async function executeTrade(side, lot, price){
+  if(_orderInProgress) return;
   if(!MT5_TOKEN || !MT5_ACCOUNT_ID){
     showTrdToast('MT5未接続です', 'var(--red)'); return;
   }
+  _orderInProgress = true;
+  var _buyBtn     = document.getElementById('trdBuyBtn');
+  var _sellBtn    = document.getElementById('trdSellBtn');
+  var _confirmBtn = document.getElementById('trdConfirmOk');
+  var _origBuyHtml  = _buyBtn     ? _buyBtn.innerHTML     : '';
+  var _origSellHtml = _sellBtn    ? _sellBtn.innerHTML    : '';
+  var _origOkText   = _confirmBtn ? _confirmBtn.textContent : '';
+  if(_buyBtn)     { _buyBtn.disabled     = true; _buyBtn.textContent     = '送信中...'; }
+  if(_sellBtn)    { _sellBtn.disabled    = true; _sellBtn.textContent    = '送信中...'; }
+  if(_confirmBtn) { _confirmBtn.disabled = true; _confirmBtn.textContent = '送信中...'; }
+  try {
   // 楽観的UI更新（レスポンスを待たずに即時反映）
   var curCount = mt5Positions.length;
   document.getElementById('posCount').textContent = (curCount + 1) + '件';
@@ -2783,13 +2797,24 @@ async function executeTrade(side, lot, price){
   } catch(e){
     showTrdToast('通信エラー: ' + e.message, 'var(--red)');
   }
+  } finally {
+    _orderInProgress = false;
+    var _isStaleNow = _lastDataUpdate > 0 && (Date.now() - _lastDataUpdate) / 1000 >= 30;
+    if(_buyBtn)     { _buyBtn.innerHTML      = _origBuyHtml;  _buyBtn.disabled     = _isStaleNow; _buyBtn.title  = _isStaleNow ? 'データが古いため発注できません' : ''; }
+    if(_sellBtn)    { _sellBtn.innerHTML     = _origSellHtml; _sellBtn.disabled    = _isStaleNow; _sellBtn.title = _isStaleNow ? 'データが古いため発注できません' : ''; }
+    if(_confirmBtn) { _confirmBtn.textContent = _origOkText;  _confirmBtn.disabled = false; }
+  }
 }
 
 async function closeAllPositions(){
+  if(_orderInProgress) return;
   if(!MT5_TOKEN || !MT5_ACCOUNT_ID){
     showTrdToast('MT5未接続です', 'var(--red)'); return;
   }
   if(!mt5Positions.length){ showTrdToast('決済するポジションがありません', 'var(--muted)'); return; }
+  _orderInProgress = true;
+  var _closeBtn = document.getElementById('trdCloseBtn');
+  if(_closeBtn){ _closeBtn.disabled = true; _closeBtn.textContent = '処理中...'; }
   var count = mt5Positions.length;
   // 楽観的UI更新（レスポンスを待たずに即時反映）
   document.getElementById('posCount').textContent = '0件';
@@ -2814,6 +2839,9 @@ async function closeAllPositions(){
     setTimeout(fetchMT5Data, 500);
   } catch(e){
     showTrdToast('決済エラー: ' + e.message, 'var(--red)');
+  } finally {
+    _orderInProgress = false;
+    if(_closeBtn){ _closeBtn.disabled = false; _closeBtn.textContent = '全決済'; }
   }
 }
 

@@ -49,6 +49,8 @@ html,body{
 }
 .mt5-badge.connected{background:rgba(0,217,126,0.15);border-color:var(--green);color:var(--green);}
 .mt5-badge.stale{background:rgba(255,140,0,0.2);border-color:#ff8c00;color:#ff8c00;}
+.mt5-badge.reconnecting{background:rgba(80,160,255,0.15);border-color:#50a0ff;color:#50a0ff;animation:mt5-blink 1s ease-in-out infinite;}
+@keyframes mt5-blink{0%,100%{opacity:1;}50%{opacity:0.35;}}
 .mt5-dot{width:6px;height:6px;border-radius:50%;background:currentColor;}
 
 /* ── BALANCE BAR ── */
@@ -686,6 +688,9 @@ var followLatest = true;           // true=末尾追従 / false=ユーザーが�
 var chartRequestVersion = 0;       // 非同期競合防止: loadChart毎にインクリメント
 var _weekendSyncDone = {};         // 週明け再同期済みフラグ { tf: true }
 var _lastDataUpdate = 0;           // 最終データ更新時刻 (Date.now())
+var _reconnectTimer = null;        // 自動再接続タイマー
+var _reconnectCount = 0;           // 再接続試行回数
+var _fetchFailCount = 0;           // fetchMT5Data 連続失敗回数
 
 // ══ INIT ══
 window.addEventListener('DOMContentLoaded', function(){
@@ -1799,8 +1804,50 @@ async function fetchMT5Data(){
     }
     // 未確定足をMetaApi current-candleで更新
     await refreshCurrentCandleFromAPI();
+    _fetchFailCount = 0;
     return true;
-  } catch(e){ console.log('[MT5接続] 失敗', e); return false; }
+  } catch(e){
+    _fetchFailCount++;
+    console.log('[MT5接続] 失敗 (連続', _fetchFailCount, '回)', e);
+    if(_fetchFailCount >= 3 && mt5Connected) {
+      mt5Connected = false;
+      if(mt5Timer){ clearInterval(mt5Timer); mt5Timer = null; }
+      updateBadge(false);
+      console.warn('[MT5接続] 3回連続失敗 → 切断扱い・自動再接続を予約');
+      scheduleReconnect();
+    }
+    return false;
+  }
+}
+
+function scheduleReconnect() {
+  if(_reconnectTimer) return; // 既にタイマー動作中
+  var delay = _reconnectCount === 0 ? 15000 : Math.min(30000 * _reconnectCount, 60000);
+  console.log('[再接続] ' + (delay/1000) + '秒後に再試行 (試行回数: ' + (_reconnectCount + 1) + ')');
+  var badge = document.getElementById('mt5Badge');
+  if(badge) badge.classList.add('reconnecting');
+  _reconnectTimer = setTimeout(async function(){
+    _reconnectTimer = null;
+    console.log('[再接続] 試行中...');
+    var ok = await fetchMT5Data();
+    if(ok) {
+      _reconnectCount = 0;
+      _fetchFailCount = 0;
+      mt5Connected = true;
+      updateBadge(true);
+      var b = document.getElementById('mt5Badge');
+      if(b) b.classList.remove('reconnecting');
+      console.log('[再接続] 成功 → データ再同期');
+      if(mt5Timer) clearInterval(mt5Timer);
+      mt5Timer = setInterval(fetchMT5Data, 10*1000);
+      await fetchMT5Data();
+      loadChart(currentTf);
+    } else {
+      _reconnectCount++;
+      console.warn('[再接続] 失敗 (試行回数: ' + _reconnectCount + ')');
+      scheduleReconnect();
+    }
+  }, delay);
 }
 
 async function fetchLivePrice(){

@@ -683,6 +683,7 @@ var tdWsConnected = false;
 var chartLoadedWithMT5 = false;    // MT5データでチャートを読み込み済みフラグ
 var followLatest = true;           // true=末尾追従 / false=ユーザーがパン中
 var chartRequestVersion = 0;       // 非同期競合防止: loadChart毎にインクリメント
+var _weekendSyncDone = {};         // 週明け再同期済みフラグ { tf: true }
 
 // ══ INIT ══
 window.addEventListener('DOMContentLoaded', function(){
@@ -800,6 +801,16 @@ async function loadChart(tf) {
   updateHeaderFromCandles(candles);
   document.getElementById('chartLoading').classList.remove('show');
   if(tradeMarks && tradeMarks.length && chartInstance) chartInstance.update('none');
+
+  // buildChart完了後500ms後にMT5接続済みなら現在足を1回同期（週明け最初の足ズレ暫定対応）
+  var _postLoadSyncDone = false;
+  if(MT5_TOKEN && MT5_ACCOUNT_ID && mt5Connected) {
+    setTimeout(function(){
+      if(_postLoadSyncDone) return;
+      _postLoadSyncDone = true;
+      refreshCurrentCandleFromAPI();
+    }, 500);
+  }
 }
 
 // ── GC_DEBUG ヘルパー ──
@@ -835,6 +846,17 @@ function gcDebugLog() {
 }
 
 // ══ METAAPI CANDLES ══
+// 週明け等のギャップ後最初のバーかどうかを判定する
+function isFirstBarAfterGap(candles, idx, tfMs) {
+  if(idx <= 0) return false;
+  var prev = candles[idx-1];
+  var cur  = candles[idx];
+  if(!prev || !cur) return false;
+  var prevStart = Math.floor(prev.t / tfMs) * tfMs;
+  var curStart  = Math.floor(cur.t  / tfMs) * tfMs;
+  return (curStart - prevStart) > tfMs * 3;
+}
+
 async function fetchMetaApiCandles(tf, count, reqVer) {
   var tfMap = {'1':'1m','5':'5m','15':'15m','60':'1h','240':'4h','1D':'1d','1W':'1w'};
   var timeframe = tfMap[tf] || '15m';
@@ -884,6 +906,14 @@ async function fetchMetaApiCandles(tf, count, reqVer) {
     var mapped = histData.map(function(v){
       return {t: new Date(v.time).getTime(), bt: v.brokerTime, o: +v.open, h: +v.high, l: +v.low, c: +v.close};
     }).sort(function(a,b){return a.t-b.t;}).slice(-count);
+
+    // 週明け等ギャップ後の最初のバーにフラグ付与
+    for(var _gi = 1; _gi < mapped.length; _gi++){
+      if(isFirstBarAfterGap(mapped, _gi, tfMs)){
+        mapped[_gi].isFirstBarAfterWeekend = true;
+        console.log('[MetaApi] 週明け最初の足検知 idx:', _gi, 'bt:', mapped[_gi].bt, 'prev bt:', mapped[_gi-1]?.bt);
+      }
+    }
 
     console.log('[MetaApi] slice後 count:', mapped.length,
       'first bt:', mapped[0]?.bt,
@@ -1816,6 +1846,15 @@ async function refreshCurrentCandleFromAPI() {
   } else if(curNorm > lastNorm) {
     // 新足開始：前の足を確定化してから追加
     delete last.isPartial;
+
+    // 週明け最初の足が確定したタイミングで historical を再同期（1回のみ）
+    if(last.isFirstBarAfterWeekend && !_weekendSyncDone[currentTf]) {
+      _weekendSyncDone[currentTf] = true;
+      console.log('[refreshCurrentCandle] 週明け最初の足確定 → historical再同期 tf:', currentTf, 'bt:', last.bt);
+      loadChart(currentTf);
+      return;
+    }
+
     console.log('BAR_CONFIRMED', {
       bt: last.bt,
       o: last.o,
@@ -2802,6 +2841,12 @@ function calcATR(candles, period) {
 }
 
 function calcDowTheory(candles) {
+  // 週明け最初の足（OHLCズレリスク）を除外してから分析
+  var _weekendBars = candles ? candles.filter(function(c){ return c.isFirstBarAfterWeekend; }).length : 0;
+  if(_weekendBars > 0) {
+    console.log('[calcDowTheory] 週明け足除外:', _weekendBars, '本');
+    candles = candles.filter(function(c){ return !c.isFirstBarAfterWeekend; });
+  }
   if(!candles || candles.length < 10) {
     return {trend:'判定中', trendDetail:'データ不足', trendColor:'var(--muted)',
       swingHighs:[], swingLows:[], recentHighs:[], recentLows:[],

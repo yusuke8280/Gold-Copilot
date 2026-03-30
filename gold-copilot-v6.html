@@ -1275,6 +1275,24 @@ function redrawChart() {
   var canvas = document.getElementById('mainChart');
   if(!canvas || !_cv.candles || !_cv.candles.length) return;
 
+  var _tfMinVRange = {'1':30,'5':24,'15':18,'60':12,'240':8,'1D':6,'1W':6}[currentTf]||10;
+  if(_cv.vMax - _cv.vMin < _tfMinVRange){
+    var _midV = (_cv.vMin + _cv.vMax) / 2;
+    _cv.vMin = _midV - _tfMinVRange / 2;
+    _cv.vMax = _midV + _tfMinVRange / 2;
+    if(_cv.vMin < 0){ _cv.vMin = 0; _cv.vMax = _tfMinVRange; }
+    if(_cv.vMax > _cv.candles.length - 1){ _cv.vMax = _cv.candles.length - 1; _cv.vMin = Math.max(0, _cv.vMax - _tfMinVRange); }
+    console.warn('[vRange clamp]', {tf:currentTf, vMin:_cv.vMin, vMax:_cv.vMax, range:_cv.vMax-_cv.vMin});
+  }
+
+  var _tfMinYRange = {'1':0.8,'5':1.5,'15':2.5,'60':5.0,'240':10.0,'1D':20.0,'1W':50.0}[currentTf]||1.0;
+  if(_cv.yMax - _cv.yMin < _tfMinYRange){
+    var _midY = (_cv.yMin + _cv.yMax) / 2;
+    _cv.yMin = _midY - _tfMinYRange / 2;
+    _cv.yMax = _midY + _tfMinYRange / 2;
+    console.warn('[yRange clamp]', {tf:currentTf, range:_cv.yMax-_cv.yMin});
+  }
+
   var dpr = window.devicePixelRatio || 1;
   var W   = canvas.width  / dpr;
   var H   = canvas.height / dpr;
@@ -2592,6 +2610,20 @@ function scheduleChartUpdate() {
   });
 }
 var _tz={isPan:false,lastX:0,pinchDist:0,pinchRange:0,vMin:0,vMax:0,anchorIdx:0,anchorRelX:0};
+// rangeをTF上下限 + total にクランプ（グローバルヘルパー）
+function _clampRange(range,total){
+  var map={
+    '1':  {min:30,max:120},
+    '5':  {min:24,max:100},
+    '15': {min:18,max:80},
+    '60': {min:12,max:60},
+    '240':{min:8, max:40},
+    '1D': {min:6, max:30},
+    '1W': {min:6, max:30}
+  };
+  var lim=map[currentTf]||{min:10,max:80};
+  return Math.max(lim.min, Math.min(Math.min(total,lim.max), range));
+}
 function initTouchZoom(){
   var c=document.getElementById('mainChart');
 
@@ -2607,11 +2639,6 @@ function initTouchZoom(){
       '1W': {min:6, max:30}
     };
     return map[currentTf]||{min:10,max:80};
-  }
-  // rangeをTF上下限 + total にクランプ
-  function _clampRange(range,total){
-    var lim=_tfZoomLimits();
-    return Math.max(lim.min, Math.min(Math.min(total,lim.max), range));
   }
 
   c.addEventListener('touchstart',function(e){

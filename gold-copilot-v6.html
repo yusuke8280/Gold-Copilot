@@ -48,6 +48,7 @@ html,body{
   border-radius:6px;padding:4px 8px;font-size:10px;color:var(--red);cursor:pointer;
 }
 .mt5-badge.connected{background:rgba(0,217,126,0.15);border-color:var(--green);color:var(--green);}
+.mt5-badge.stale{background:rgba(255,140,0,0.2);border-color:#ff8c00;color:#ff8c00;}
 .mt5-dot{width:6px;height:6px;border-radius:50%;background:currentColor;}
 
 /* ── BALANCE BAR ── */
@@ -684,6 +685,7 @@ var chartLoadedWithMT5 = false;    // MT5データでチャートを読み込み
 var followLatest = true;           // true=末尾追従 / false=ユーザーがパン中
 var chartRequestVersion = 0;       // 非同期競合防止: loadChart毎にインクリメント
 var _weekendSyncDone = {};         // 週明け再同期済みフラグ { tf: true }
+var _lastDataUpdate = 0;           // 最終データ更新時刻 (Date.now())
 
 // ══ INIT ══
 window.addEventListener('DOMContentLoaded', function(){
@@ -1458,6 +1460,22 @@ function redrawChart() {
     }
   }
 
+  // STALE インジケーター
+  if(_lastDataUpdate > 0) {
+    var _staleAge = (Date.now() - _lastDataUpdate) / 1000;
+    if(_staleAge >= 30) {
+      ctx.font      = 'bold 11px Space Mono, monospace';
+      ctx.textAlign = 'right';
+      ctx.fillStyle = '#ff4d6a';
+      ctx.fillText('STALE', padL + plotW, padT + 16);
+    } else if(_staleAge >= 10) {
+      ctx.font      = 'bold 11px Space Mono, monospace';
+      ctx.textAlign = 'right';
+      ctx.fillStyle = '#ff8c00';
+      ctx.fillText('!', padL + plotW, padT + 16);
+    }
+  }
+
   // 約定マーク
   // deal.time（UTC ISO）を時間解釈の主軸にする
   // deal.brokerTime はローカル時間文字列のため UTC 解釈しない
@@ -1725,6 +1743,19 @@ function updateBadge(connected){
   if(connected){b.classList.add('connected');t.textContent='MT5 ●';}
   else{b.classList.remove('connected');t.textContent='設定';}
 }
+function updateStaleState(){
+  var age = _lastDataUpdate > 0 ? (Date.now() - _lastDataUpdate) / 1000 : 0;
+  var badge = document.getElementById('mt5Badge');
+  var buyBtn  = document.getElementById('trdBuyBtn');
+  var sellBtn = document.getElementById('trdSellBtn');
+  var isStale = _lastDataUpdate > 0 && age >= 30;
+  if(badge){
+    if(isStale) badge.classList.add('stale');
+    else         badge.classList.remove('stale');
+  }
+  if(buyBtn)  buyBtn.disabled  = isStale;
+  if(sellBtn) sellBtn.disabled = isStale;
+}
 
 
 async function fetchMT5Data(){
@@ -1761,7 +1792,7 @@ async function fetchMT5Data(){
       var pd=await r3.json();
       var bid=parseFloat(pd.bid||0);
       var ask=parseFloat(pd.ask||0);
-      if(bid>0){ mt5Bid = bid; updateLivePrice(bid); }
+      if(bid>0){ mt5Bid = bid; updateLivePrice(bid); _lastDataUpdate = Date.now(); }
       if(ask>0||bid>0) updateTradePrices(ask||bid, bid);
       // brokerTimeOffsetは不要（変換なし）
       brokerTimeOffset = 0;
@@ -1879,6 +1910,8 @@ async function refreshCurrentCandleFromAPI() {
     _cv.vMax = _cv.candles.length - 1;
     _fitY(_cv.vMin, _cv.vMax);
   }
+  _lastDataUpdate = Date.now();
+  updateStaleState();
   gcDebugLastSync = Date.now();
   gcDebugLog();
   scheduleChartUpdate();

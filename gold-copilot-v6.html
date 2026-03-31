@@ -2586,44 +2586,60 @@ function renderAI(r){
 
   var html = '';
 
-  // ── シグナルカード ──
-  var subLabel = trendCurrent ? _trendEnToJa(trendCurrent)+'トレンド' : dowTrend;
-  var subColor  = trendCurrent ? _trendColor(trendCurrent) : _trendColor(dowTrend);
-  var badgeText = confidence ? '信頼度 '+confidence+'/5' : (r.strength || '');
-  html += '<div class="signal-card" style="background:'+sigBg+';border:1px solid '+sigBorder+';">'
-    + '<div>'
-    + '<div class="signal-main" style="color:'+sigColor+'">'+action+'</div>'
-    + '<div class="signal-sub" style="color:'+subColor+'">'+subLabel+'</div>'
-    + '</div>'
-    + (badgeText ? '<span class="signal-strength" style="background:'+sigBg+';border:1px solid '+sigBorder+';color:'+sigColor+'">'+badgeText+'</span>' : '')
-    + '</div>';
+  // ── 修正1: actionカード（大きく目立たせる） ──
+  var actionBg     = isBuy?'#00a86b':isSell?'#d32f2f':'#555';
+  var actionLabel  = isBuy?'BUY':isSell?'SELL':'WAIT';
+  html += '<div style="background:'+actionBg+';border-radius:12px;padding:16px 20px;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;">'
+    + '<span style="color:#fff;font-size:32px;font-weight:800;letter-spacing:2px;">'+actionLabel+'</span>';
 
-  // ── よすが式ダウ理論カード（上位足 + 現在足） ──
+  // 修正4: confidence バー（actionカード右側）
+  if(confidence){
+    var confDots = '';
+    for(var ci=1;ci<=5;ci++) confDots += ci<=confidence ? '●' : '○';
+    html += '<div style="text-align:right;">'
+      + '<div style="color:rgba(255,255,255,0.7);font-size:10px;margin-bottom:2px;">信頼度</div>'
+      + '<div style="color:#fff;font-size:13px;font-weight:700;">'+confidence+'/5</div>'
+      + '<div style="color:rgba(255,255,255,0.9);font-size:11px;letter-spacing:1px;">'+confDots+'</div>'
+      + '</div>';
+  } else if(r.strength){
+    html += '<span style="color:rgba(255,255,255,0.8);font-size:13px;">'+r.strength+'</span>';
+  }
+  html += '</div>';
+
+  // ── 修正2: trend_higher ▶ trend_current 横並び ──
   if(trendHigher || trendCurrent){
-    var cardColor = trendCurrent ? _trendColor(trendCurrent) : 'var(--gold)';
-    html += '<div class="analysis-card" style="border-color:'+cardColor+';margin-bottom:12px;">'
-      + '<div class="analysis-head" style="color:'+cardColor+'">📐 よすが式ダウ理論</div>'
-      + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px;">';
+    var higherLabel  = trendHigher  ? r._higherTf  || 'HTF' : null;
+    var currentLabel = trendCurrent ? r._currentTf || 'CTF' : null;
+    html += '<div class="analysis-card" style="margin-bottom:12px;padding:10px 14px;">'
+      + '<div style="font-size:9px;color:var(--muted);letter-spacing:1px;margin-bottom:6px;">📐 よすが式ダウ理論</div>'
+      + '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">';
     if(trendHigher){
-      html += '<div style="background:var(--bg);border-radius:8px;padding:10px;">'
-        + '<div style="font-size:9px;color:var(--muted);letter-spacing:1px;margin-bottom:4px;">上位足('+r._higherTf+')</div>'
-        + '<div style="font-size:14px;font-weight:700;color:'+_trendColor(trendHigher)+';">'+_trendEnToJa(trendHigher)+'</div>'
-        + '</div>';
+      html += '<span style="font-size:11px;color:var(--muted);">上位足('+higherLabel+'):</span>'
+        + '<span style="font-size:15px;font-weight:700;color:'+_trendColor(trendHigher)+';">'+trendHigher+'</span>';
+    }
+    if(trendHigher && trendCurrent){
+      html += '<span style="font-size:14px;color:var(--muted);">▶</span>';
     }
     if(trendCurrent){
-      html += '<div style="background:var(--bg);border-radius:8px;padding:10px;">'
-        + '<div style="font-size:9px;color:var(--muted);letter-spacing:1px;margin-bottom:4px;">現在足('+r._currentTf+')</div>'
-        + '<div style="font-size:14px;font-weight:700;color:'+_trendColor(trendCurrent)+';">'+_trendEnToJa(trendCurrent)+'</div>'
-        + '</div>';
+      html += '<span style="font-size:11px;color:var(--muted);">現在足('+currentLabel+'):</span>'
+        + '<span style="font-size:15px;font-weight:700;color:'+_trendColor(trendCurrent)+';">'+trendCurrent+'</span>';
     }
     html += '</div>';
-    if(transition && transition !== 'NONE'){
-      var transColor = transition==='REVERSAL_TO_UP'?'var(--green)':'var(--red)';
-      html += '<div style="margin-top:8px;font-size:12px;color:'+transColor+';font-weight:600;">⚡ '+transition+'</div>';
+
+    // 修正3: transition 日本語表示
+    var transJa, transColor;
+    if(transition === 'REVERSAL_TO_UP'){
+      transJa = '↑ 上昇転換'; transColor = 'var(--green)';
+    } else if(transition === 'REVERSAL_TO_DOWN'){
+      transJa = '↓ 下降転換'; transColor = 'var(--red)';
+    } else {
+      transJa = '継続中'; transColor = 'var(--muted)';
     }
+    html += '<div style="margin-top:6px;font-size:12px;color:'+transColor+';font-weight:600;">'+transJa+'</div>';
+
     if(trendStrength && trendStrength !== 'UNKNOWN'){
       var tsColor = trendStrength==='STRONG'?'var(--green)':trendStrength==='WEAK'?'var(--red)':'var(--gold)';
-      html += '<div style="margin-top:6px;font-size:11px;color:'+tsColor+';">強度: '+trendStrength+'</div>';
+      html += '<div style="margin-top:4px;font-size:11px;color:'+tsColor+';">強度: '+trendStrength+'</div>';
     }
     html += '</div>';
   } else {
@@ -2644,16 +2660,17 @@ function renderAI(r){
       + '</div>';
   }
 
-  // ── S/Rライン近接警告 ──
+  // ── 修正6: near_sr_line 人間向け整形 ──
   if(nearSr && nearSr.is_near){
-    var nsrColor = nearSr.type==='resistance'?'var(--red)':nearSr.type==='support'?'var(--green)':'var(--gold)';
-    html += '<div class="analysis-card" style="border-color:'+nsrColor+';margin-bottom:12px;">'
-      + '<div class="analysis-head" style="color:'+nsrColor+'">⚠ S/Rライン近接</div>'
-      + '<div style="font-size:13px;color:'+nsrColor+';padding:4px 0;">'
-      + (nearSr.type==='resistance'?'レジスタンス':nearSr.type==='support'?'サポート':nearSr.type)
-      + 'ライン付近 ('+(nearSr.tf==='higher'?'上位足':nearSr.tf==='current'?'現在足':nearSr.tf)+')'
-      + '</div>'
-      + '</div>';
+    if(nearSr.type === 'resistance'){
+      html += '<div class="analysis-card" style="border-color:var(--red);margin-bottom:12px;">'
+        + '<div style="font-size:13px;color:var(--red);font-weight:600;">⚠️ 上位足レジスタンス近接</div>'
+        + '</div>';
+    } else if(nearSr.type === 'support'){
+      html += '<div class="analysis-card" style="border-color:var(--green);margin-bottom:12px;">'
+        + '<div style="font-size:13px;color:var(--green);font-weight:600;">📍 上位足サポート近接</div>'
+        + '</div>';
+    }
   }
 
   // ── ATR / RR ──
@@ -2674,8 +2691,13 @@ function renderAI(r){
     if(srItems) html += '<div class="lines-card"><div class="lines-title">S/R ライン（スウィング基準）</div>'+srItems+'</div>';
   }
 
-  // ── エントリー根拠 ──
-  if(reasonsArr.length){
+  // ── 修正5: WAIT時のreason 強調 / エントリー根拠 ──
+  if(action === 'WAIT' && reasonText){
+    html += '<div class="analysis-card" style="border:1px solid var(--gold);margin-bottom:12px;">'
+      + '<div style="font-size:11px;color:var(--gold);font-weight:700;margin-bottom:6px;">⏸ 見送り理由:</div>'
+      + '<div style="font-size:13px;color:#e0c870;line-height:1.6;">'+reasonText+'</div>'
+      + '</div>';
+  } else if(reasonsArr.length){
     html += '<div class="analysis-card" style="margin-bottom:12px;">'
       + '<div class="analysis-head">📋 エントリー根拠</div>';
     reasonsArr.forEach(function(re,i){

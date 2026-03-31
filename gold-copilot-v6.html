@@ -849,7 +849,7 @@ async function fetchHigherTfCandles(higherTf) {
   var timeframe = tfMap[higherTf] || '1h';
   var histUrl = 'https://mt-market-data-client-api-v1.london.agiliumtrade.ai/users/current/accounts/'
     + MT5_ACCOUNT_ID + '/historical-market-data/symbols/XAUUSDs/timeframes/'
-    + timeframe + '/candles?limit=30';
+    + timeframe + '/candles?limit=100';
   try {
     var res = await fetch(histUrl, {headers: {'auth-token': MT5_TOKEN}});
     if(reqVer !== chartRequestVersion) {
@@ -868,7 +868,7 @@ async function fetchHigherTfCandles(higherTf) {
     }
     var mapped = data.map(function(v){
       return {t: new Date(v.time).getTime(), bt: v.brokerTime, o: +v.open, h: +v.high, l: +v.low, c: +v.close};
-    }).sort(function(a,b){return a.t-b.t;}).slice(-10);
+    }).sort(function(a,b){return a.t-b.t;}).slice(-50);
     higherTfCandles = mapped;
     higherTfCacheTime = Date.now();
     console.log('[higherTf] 取得完了 tf:' + higherTf + ' count:' + mapped.length);

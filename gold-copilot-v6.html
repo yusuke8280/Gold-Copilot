@@ -901,7 +901,9 @@ function buildHigherTfContext(candles, higherTf) {
       nearest_support:        supports[0]    || null,
       nearest_resistance:     resistances[0] || null,
       distance_to_support:    supports[0]    != null ? +(price - supports[0]).toFixed(2)    : null,
-      distance_to_resistance: resistances[0] != null ? +(resistances[0] - price).toFixed(2) : null
+      distance_to_resistance: resistances[0] != null ? +(resistances[0] - price).toFixed(2) : null,
+      near_support:    supports[0]    != null ? (price - supports[0])    <= dow.atr * (nearLineAtrMultiplier[higherTf]||0.18) : false,
+      near_resistance: resistances[0] != null ? (resistances[0] - price) <= dow.atr * (nearLineAtrMultiplier[higherTf]||0.18) : false
     }
   };
 }
@@ -2450,7 +2452,9 @@ async function analyzeWithClaude(){
     nearest_support:        curSupports[0]    || null,
     nearest_resistance:     curResistances[0] || null,
     distance_to_support:    curSupports[0]    != null ? +(price - curSupports[0]).toFixed(2)    : null,
-    distance_to_resistance: curResistances[0] != null ? +(curResistances[0] - price).toFixed(2) : null
+    distance_to_resistance: curResistances[0] != null ? +(curResistances[0] - price).toFixed(2) : null,
+    near_support:    curSupports[0]    != null ? (price - curSupports[0])    <= atr * (nearLineAtrMultiplier[currentTf]||0.15) : false,
+    near_resistance: curResistances[0] != null ? (curResistances[0] - price) <= atr * (nearLineAtrMultiplier[currentTf]||0.15) : false
   };
 
   // 上位足コンテキスト
@@ -2500,7 +2504,7 @@ async function analyzeWithClaude(){
     }
   };
 
-  var systemPrompt = 'あなたはXAUUSD専門のFXトレーダーです。\nよすが式ダウ理論の以下のルールを厳守して分析してください。\n\nルール1: 上位足のトレンドに逆らうエントリーは絶対に提案しない\nルール2: 上位足S/Rラインにdistance_to_resistanceまたはdistance_to_supportがATR×係数以内の場合、その方向へのエントリーは提案しない\nルール3: 根拠が3つ未満の場合はWAITを返す\nルール4: 必ずJSON形式のみで返答する。説明文は不要。';
+  var systemPrompt = 'あなたはXAUUSD専門のFXトレーダーです。\nよすが式ダウ理論の以下のルールを厳守して分析してください。\n\nルール1: 上位足のトレンドに逆らうエントリーは絶対に提案しない\n\nルール2-BUY:\nBUYを提案してよいのは以下の場合のみです。\n- higher_tf_dow.trend == "UP"\n- higher_tf_sr_context.near_resistance == false\nhigher_tf_sr_context.near_support == true はBUYの禁止条件ではありません。\n上位足サポート付近はBUYにとって有利な場合があります。\n\nルール2-SELL:\nSELLを提案してよいのは以下の場合のみです。\n- higher_tf_dow.trend == "DOWN"\n- higher_tf_sr_context.near_support == false\nhigher_tf_sr_context.near_resistance == true はSELLの禁止条件ではありません。\n上位足レジスタンス付近はSELLにとって有利な場合があります。\n\n重要:\ndistance_to_support / distance_to_resistance は参考情報です。\nライン近接判定はシステム側で near_support / near_resistance として計算済みです。\nClaudeは距離を独自に再解釈せず、必ず near_support / near_resistance の真偽値のみを使って判断してください。\n\nBUY候補の条件（全て満たす場合のみ）:\n- higher_tf_dow.trend == "UP"\n- higher_tf_sr_context.near_resistance == false\n- current_tf_sr_context.near_support == true または transition == "REVERSAL_TO_UP"\n\nSELL候補の条件（全て満たす場合のみ）:\n- higher_tf_dow.trend == "DOWN"\n- higher_tf_sr_context.near_support == false\n- current_tf_sr_context.near_resistance == true または transition == "REVERSAL_TO_DOWN"\n\n上記条件を1つでも満たさない場合は必ずWAITを返す。\n根拠が3つ未満の場合もWAITを返す。\n\nルール3: 根拠が3つ未満の場合はWAITを返す\nルール4: 必ずJSON形式のみで返答する。説明文は不要。';
 
   var outputSchema = '以下のJSON形式のみで返答してください。\n{\n  "trend_higher": "UP/DOWN/RANGE",\n  "trend_current": "UP/DOWN/RANGE",\n  "transition": "REVERSAL_TO_UP/REVERSAL_TO_DOWN/NONE",\n  "near_sr_line": {"is_near": true/false, "type": "support/resistance/none", "tf": "current/higher/none"},\n  "action": "BUY/SELL/WAIT",\n  "reason": "日本語で2〜3文",\n  "stop_loss": 数値またはnull,\n  "take_profit": 数値またはnull,\n  "risk_reward": 数値またはnull,\n  "confidence": 1〜5の整数,\n  "trend_strength": "STRONG/NORMAL/WEAK/UNKNOWN"\n}';
 

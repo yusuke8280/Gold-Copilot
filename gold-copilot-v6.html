@@ -693,6 +693,19 @@ var _reconnectCount = 0;           // 再接続試行回数
 var _fetchFailCount = 0;           // fetchMT5Data 連続失敗回数
 var _orderInProgress = false;      // 発注処理中フラグ（二重送信防止）
 
+// ── よすが式ダウ理論 AI分析 グローバル設定 ──
+var higherTfMap = {
+  '1':'60', '5':'60', '15':'60',
+  '60':'240', '240':'1D', '1D':'1W', '1W':'1W'
+};
+var nearLineAtrMultiplier = {
+  '1':0.12, '5':0.15, '15':0.15,
+  '60':0.18, '240':0.20, '1D':0.20, '1W':0.20
+};
+var higherTfCandles = [];
+var higherTfDow = null;
+var higherTfCacheTime = 0;
+
 // ══ INIT ══
 window.addEventListener('DOMContentLoaded', function(){
   initChartSize();
@@ -819,6 +832,78 @@ async function loadChart(tf) {
       refreshCurrentCandleFromAPI();
     }, 500);
   }
+
+  // 上位足データ取得（よすが式ダウ理論AI分析用、5分キャッシュ）
+  if(MT5_TOKEN && MT5_ACCOUNT_ID && mt5Connected) {
+    var _htf = higherTfMap[tf] || '60';
+    if(Date.now() - higherTfCacheTime > 5 * 60 * 1000) {
+      fetchHigherTfCandles(_htf);
+    }
+  }
+}
+
+// ── 上位足キャンドル取得 ──
+async function fetchHigherTfCandles(higherTf) {
+  var reqVer = chartRequestVersion;
+  var tfMap = {'1':'1m','5':'5m','15':'15m','60':'1h','240':'4h','1D':'1d','1W':'1w'};
+  var timeframe = tfMap[higherTf] || '1h';
+  var histUrl = 'https://mt-market-data-client-api-v1.london.agiliumtrade.ai/users/current/accounts/'
+    + MT5_ACCOUNT_ID + '/historical-market-data/symbols/XAUUSDs/timeframes/'
+    + timeframe + '/candles?limit=30';
+  try {
+    var res = await fetch(histUrl, {headers: {'auth-token': MT5_TOKEN}});
+    if(reqVer !== chartRequestVersion) {
+      console.log('[higherTf] stale response破棄');
+      return;
+    }
+    if(!res.ok) {
+      console.log('[higherTf] 取得失敗 status:', res.status);
+      higherTfCandles = [];
+      return;
+    }
+    var data = await res.json();
+    if(!Array.isArray(data) || !data.length) {
+      higherTfCandles = [];
+      return;
+    }
+    var mapped = data.map(function(v){
+      return {t: new Date(v.time).getTime(), bt: v.brokerTime, o: +v.open, h: +v.high, l: +v.low, c: +v.close};
+    }).sort(function(a,b){return a.t-b.t;}).slice(-10);
+    higherTfCandles = mapped;
+    higherTfCacheTime = Date.now();
+    console.log('[higherTf] 取得完了 tf:' + higherTf + ' count:' + mapped.length);
+  } catch(e) {
+    console.log('[higherTf] 取得エラー:', e);
+    higherTfCandles = [];
+  }
+}
+
+// ── 上位足コンテキスト構築 ──
+function buildHigherTfContext(candles, higherTf) {
+  if(!candles || !candles.length) return null;
+  var dow = calcDowTheory(candles);
+  var swingHighs = (dow.swingHighs || []).slice(-3);
+  var swingLows  = (dow.swingLows  || []).slice(-3);
+  var srHighs = (dow.recentHighs || []).slice(-3).map(function(s){return s.price;});
+  var srLows  = (dow.recentLows  || []).slice(-3).map(function(s){return s.price;});
+  var sr_lines = srHighs.concat(srLows);
+  var price = mt5Bid || chartLastClose;
+  var supports    = sr_lines.filter(function(p){return p <= price;}).sort(function(a,b){return b-a;});
+  var resistances = sr_lines.filter(function(p){return p >= price;}).sort(function(a,b){return a-b;});
+  return {
+    dow: dow,
+    swings: {
+      highs: swingHighs.map(function(s){return {price:s.price, t:s.t};}),
+      lows:  swingLows.map(function(s){return {price:s.price, t:s.t};})
+    },
+    sr_lines: sr_lines,
+    sr_context: {
+      nearest_support:        supports[0]    || null,
+      nearest_resistance:     resistances[0] || null,
+      distance_to_support:    supports[0]    != null ? +(price - supports[0]).toFixed(2)    : null,
+      distance_to_resistance: resistances[0] != null ? +(resistances[0] - price).toFixed(2) : null
+    }
+  };
 }
 
 // ── GC_DEBUG ヘルパー ──
@@ -2337,63 +2422,87 @@ function runFallbackAnalysis(){
   renderAI(r);
 }
 
-// ── Claude AIによる本格分析 ──
+// ── Claude AIによる本格分析（よすが式ダウ理論） ──
 async function analyzeWithClaude(){
   var dow = calcDowTheory(chartData);
   var atr = dow.atr;
-  var recentCandles = chartData.slice(-30).map(function(c){
-    return {o:c.o, h:c.h, l:c.l, c:c.c};
-  });
-  var recentHighPrices = dow.recentHighs.map(function(s){return s.price;});
-  var recentLowPrices  = dow.recentLows.map(function(s){return s.price;});
-  var ma20 = (function(){
-    var cls = chartData.slice(-20).map(function(c){return c.c;});
-    return cls.length ? (cls.reduce(function(a,b){return a+b;},0)/cls.length).toFixed(2) : '--';
-  })();
+  var higherTf = higherTfMap[currentTf] || '60';
 
-  var prompt = `あなたはダウ理論に精通したゴールド（XAU/USD）専門トレーダーです。
-ダウ理論のみを根拠として分析し、初心者にわかりやすい日本語で回答してください。
-RSIやCCIなどのオシレーターは一切使わないこと。
+  function _trendToEn(t){
+    return t==='上昇トレンド'?'UP':t==='下降トレンド'?'DOWN':'RANGE';
+  }
+  function _countSwings(rh, rl){
+    var hh=0,hl=0,lh=0,ll=0;
+    for(var i=1;i<rh.length;i++) rh[i].price>rh[i-1].price?hh++:lh++;
+    for(var i=1;i<rl.length;i++) rl[i].price>rl[i-1].price?hl++:ll++;
+    return {hh:hh,hl:hl,lh:lh,ll:ll};
+  }
 
-【チャートデータ】
-- 時間足: ${currentTf}
-- 現在価格（リアルタイム）: ${mt5Bid || chartLastClose}
-- ※エントリー・TP・SLは必ずこの価格を基準に計算すること
-- スウィングハイ（直近）: ${JSON.stringify(recentHighPrices)}
-- スウィングロー（直近）: ${JSON.stringify(recentLowPrices)}
-- ATR(14): ${atr.toFixed(2)}
-- MA20: ${ma20}
-- ローソク足データ(直近30本): ${JSON.stringify(recentCandles)}
-- 事前判定トレンド: ${dow.trend}（${dow.trendDetail}）
+  var curCounts = _countSwings(dow.recentHighs||[], dow.recentLows||[]);
+  var price = mt5Bid || chartLastClose;
+  var confirmedCandles = chartData.filter(function(c){return !c.isPartial;});
+  var last10cur = confirmedCandles.slice(-10).map(function(c){return {o:c.o,h:c.h,l:c.l,c:c.c,bt:c.bt};});
 
-【ダウ理論分析の観点】
-1. 高値・安値の切り上がり/切り下がりでトレンドを判定
-2. 直近スウィングからサポート・レジスタンスを特定
-3. トレンド方向へのエントリーポイントを提示
-4. 押し目/戻り目の根拠を明記
-5. ATRを活用してTP・SLを設定
+  // 現在TF S/Rコンテキスト
+  var curSupports    = (dow.supportLevels||[]).filter(function(p){return p<=price;}).sort(function(a,b){return b-a;});
+  var curResistances = (dow.resistanceLevels||[]).filter(function(p){return p>=price;}).sort(function(a,b){return a-b;});
+  var curSrContext = {
+    nearest_support:        curSupports[0]    || null,
+    nearest_resistance:     curResistances[0] || null,
+    distance_to_support:    curSupports[0]    != null ? +(price - curSupports[0]).toFixed(2)    : null,
+    distance_to_resistance: curResistances[0] != null ? +(curResistances[0] - price).toFixed(2) : null
+  };
 
-以下のJSON形式のみで回答。他のテキスト不要：
-{
-  "signal": "BUY" または "SELL" または "WAIT",
-  "strength": "強" または "中" または "弱",
-  "dow_trend": "上昇トレンド" または "下降トレンド" または "レンジ相場" または "転換疑い",
-  "dow_basis": "判定根拠（HH/HL/LH/LLの組み合わせを明記・30文字以内）",
-  "entry_reason": ["根拠1（20文字以内）","根拠2（20文字以内）","根拠3（20文字以内）"],
-  "entry": 数値,
-  "tp": 数値,
-  "sl": 数値,
-  "rr": "例：1:2.1",
-  "sr": [
-    {"label":"R1","price":数値},
-    {"label":"R2","price":数値},
-    {"label":"S1","price":数値},
-    {"label":"S2","price":数値}
-  ],
-  "analysis": "ダウ理論に基づく解説（100文字以内）",
-  "warning": "注意点（50文字以内）",
-  "ma20": ${ma20}
-}`;
+  // 上位足コンテキスト
+  var hCtx = higherTfCandles.length ? buildHigherTfContext(higherTfCandles, higherTf) : null;
+  var higherCounts = hCtx ? _countSwings(hCtx.dow.recentHighs||[], hCtx.dow.recentLows||[]) : null;
+
+  // ポジションコンテキスト
+  var pos = mt5Positions.length > 0 ? mt5Positions[0] : null;
+
+  var inputData = {
+    current_time:  chartData.length ? (chartData[chartData.length-1].bt||'') : '',
+    current_tf:    currentTf,
+    higher_tf:     higherTf,
+    current_price: price,
+    atr_current:   +atr.toFixed(2),
+    current_tf_dow: {
+      trend:      _trendToEn(dow.trend),
+      transition: 'NONE',
+      hh_count:   curCounts.hh,
+      hl_count:   curCounts.hl,
+      lh_count:   curCounts.lh,
+      ll_count:   curCounts.ll
+    },
+    higher_tf_dow: hCtx ? {
+      trend:      _trendToEn(hCtx.dow.trend),
+      transition: 'NONE',
+      hh_count:   higherCounts.hh,
+      hl_count:   higherCounts.hl,
+      lh_count:   higherCounts.lh,
+      ll_count:   higherCounts.ll
+    } : null,
+    current_tf_swings: {
+      highs: (dow.swingHighs||[]).slice(-3).map(function(s){return {price:s.price,t:s.t};}),
+      lows:  (dow.swingLows||[]).slice(-3).map(function(s){return {price:s.price,t:s.t};})
+    },
+    higher_tf_swings:     hCtx ? hCtx.swings    : null,
+    sr_lines_current:     (dow.resistanceLevels||[]).concat(dow.supportLevels||[]).slice(0,5),
+    sr_lines_higher:      hCtx ? hCtx.sr_lines   : null,
+    current_tf_sr_context: curSrContext,
+    higher_tf_sr_context:  hCtx ? hCtx.sr_context : null,
+    current_tf_candles:   last10cur,
+    higher_tf_candles:    higherTfCandles.map(function(c){return {o:c.o,h:c.h,l:c.l,c:c.c,bt:c.bt};}),
+    position_context: {
+      has_position: mt5Positions.length > 0,
+      side:         pos ? (pos.type==='POSITION_TYPE_BUY'?'BUY':'SELL') : null,
+      entry_price:  pos ? pos.openPrice : null
+    }
+  };
+
+  var systemPrompt = 'あなたはXAUUSD専門のFXトレーダーです。\nよすが式ダウ理論の以下のルールを厳守して分析してください。\n\nルール1: 上位足のトレンドに逆らうエントリーは絶対に提案しない\nルール2: 上位足S/Rラインにdistance_to_resistanceまたはdistance_to_supportがATR×係数以内の場合、その方向へのエントリーは提案しない\nルール3: 根拠が3つ未満の場合はWAITを返す\nルール4: 必ずJSON形式のみで返答する。説明文は不要。';
+
+  var outputSchema = '以下のJSON形式のみで返答してください。\n{\n  "trend_higher": "UP/DOWN/RANGE",\n  "trend_current": "UP/DOWN/RANGE",\n  "transition": "REVERSAL_TO_UP/REVERSAL_TO_DOWN/NONE",\n  "near_sr_line": {"is_near": true/false, "type": "support/resistance/none", "tf": "current/higher/none"},\n  "action": "BUY/SELL/WAIT",\n  "reason": "日本語で2〜3文",\n  "stop_loss": 数値またはnull,\n  "take_profit": 数値またはnull,\n  "risk_reward": 数値またはnull,\n  "confidence": 1〜5の整数,\n  "trend_strength": "STRONG/NORMAL/WEAK/UNKNOWN"\n}';
 
   // ローディング表示
   document.getElementById('aiPlaceholder').style.display='flex';
@@ -2403,42 +2512,35 @@ RSIやCCIなどのオシレーターは一切使わないこと。
   try {
     var res = await fetch('https://gold-copilot-worker.gold-copilot.workers.dev/claude', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
+      headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({
         model: 'claude-haiku-4-5-20251001',
-        max_tokens: 1000,
-        messages: [{role:'user', content: prompt}]
+        max_tokens: 800,
+        system: systemPrompt,
+        messages: [{role:'user', content: JSON.stringify(inputData, null, 2) + '\n\n' + outputSchema}]
       })
     });
 
     if(!res.ok) throw new Error('Claude API error: ' + res.status);
     var data = await res.json();
     var text = data.content[0].text.trim();
-    // JSONを抽出
     var jsonMatch = text.match(/\{[\s\S]*\}/);
     if(!jsonMatch) throw new Error('JSON parse error');
     var r = JSON.parse(jsonMatch[0]);
     r.atr = atr;
+    r._higherTf = higherTf;
+    r._currentTf = currentTf;
     analysisResult = r;
-    // S/Rラインをチャートに反映（sr配列形式 or 旧形式に対応）
-    var srLines = [];
-    if(Array.isArray(r.sr)) {
-      var srColorMap = {R1:'#ff4d6a',R2:'#ff8099',S1:'#00d97e',S2:'#66ffbb'};
-      r.sr.forEach(function(s){
-        var col = srColorMap[s.label] || '#f0b429';
-        srLines.push({price:s.price, color:col, label:s.label, width:1.5, dash:[4,3]});
-      });
-    } else {
-      // 旧形式フォールバック
-      if(r.r1) srLines.push({price:r.r1,color:'#ff4d6a',label:'R1',width:1.5,dash:[4,3]});
-      if(r.r2) srLines.push({price:r.r2,color:'#ff8099',label:'R2',width:1,dash:[4,3]});
-      if(r.s1) srLines.push({price:r.s1,color:'#00d97e',label:'S1',width:1.5,dash:[4,3]});
-      if(r.s2) srLines.push({price:r.s2,color:'#66ffbb',label:'S2',width:1,dash:[4,3]});
-    }
-    overlayLines = srLines.filter(function(l){ return l.price > 3000 && l.price < 10000; });
-    buildChart(chartData,overlayLines.concat(entryLines));
+
+    // 現在TF S/Rラインをチャートに反映
+    var srColorMap = {R1:'#ff4d6a',R2:'#ff8099',S1:'#00d97e',S2:'#66ffbb'};
+    var srLabels = ['R1','R2','S1','S2'];
+    var srLines = inputData.sr_lines_current.slice(0,4).map(function(p,i){
+      var lbl = srLabels[i] || ('L'+(i+1));
+      return {price:p, color:srColorMap[lbl]||'#f0b429', label:lbl, width:1.5, dash:[4,3]};
+    });
+    overlayLines = srLines.filter(function(l){return l.price>3000&&l.price<10000;});
+    buildChart(chartData, overlayLines.concat(entryLines));
     renderAI(r);
   } catch(err) {
     console.error('Claude分析エラー:', err);
@@ -2447,87 +2549,142 @@ RSIやCCIなどのオシレーターは一切使わないこと。
 }
 
 function renderAI(r){
-  var isBuy=r.signal==='BUY', isSell=r.signal==='SELL';
+  // 新旧フォーマット正規化
+  var action    = r.action  || r.signal || 'WAIT';
+  var isBuy     = action==='BUY', isSell = action==='SELL';
   var sigBg     = isBuy?'rgba(0,217,126,0.12)':isSell?'rgba(255,77,106,0.12)':'rgba(240,180,41,0.1)';
   var sigBorder = isBuy?'var(--green)':isSell?'var(--red)':'var(--gold)';
   var sigColor  = isBuy?'var(--green)':isSell?'var(--red)':'var(--gold)';
-  var warnColor = 'var(--gold)';
 
-  // S/Rライン
-  var srColorMap = {
-    R1:['rgba(255,77,106,0.15)','#ff4d6a'],
-    R2:['rgba(255,128,153,0.12)','#ff8099'],
-    S1:['rgba(0,217,126,0.15)','#00d97e'],
-    S2:['rgba(102,255,187,0.1)','#66ffbb']
-  };
-  var srItems = '';
-  if(Array.isArray(r.sr)){
-    r.sr.forEach(function(s){
-      var c = srColorMap[s.label] || ['rgba(240,180,41,0.1)','#f0b429'];
-      srItems += lineItem(s.label, s.price, c[0], c[1]);
-    });
+  var trendHigher  = r.trend_higher  || null;
+  var trendCurrent = r.trend_current || null;
+  var transition   = r.transition    || 'NONE';
+  var trendStrength = r.trend_strength || null;
+  var confidence   = r.confidence    || null;
+  var riskReward   = r.risk_reward   || null;
+  var stopLoss     = r.stop_loss  != null ? r.stop_loss  : (r.sl  != null ? r.sl  : null);
+  var takeProfit   = r.take_profit != null ? r.take_profit : (r.tp != null ? r.tp : null);
+  var nearSr       = r.near_sr_line  || null;
+  var reasonText   = typeof r.reason === 'string' ? r.reason : null;
+  var reasonsArr   = Array.isArray(r.entry_reason) ? r.entry_reason
+                   : (reasonText ? [reasonText] : []);
+  var dowTrend     = r.dow_trend || '--';
+  var dowBasis     = r.dow_basis || '';
+  var warningText  = r.warning || r.risk || '';
+
+  function _trendEnToJa(t){ return t==='UP'?'上昇':t==='DOWN'?'下降':'レンジ'; }
+  function _trendColor(t){
+    return (t==='UP'||t==='上昇トレンド') ? 'var(--green)'
+         : (t==='DOWN'||t==='下降トレンド') ? 'var(--red)' : 'var(--gold)';
   }
-
-  var rrText = r.rr || '--';
-  var displayEntry = (mt5Bid || chartLastClose) > 0 ? (mt5Bid || chartLastClose).toFixed(2) : (r.entry || '--');
-  var dowTrend  = r.dow_trend  || r.trend || '--';
-  var dowBasis  = r.dow_basis  || '';
-  var dowColor  = (dowTrend==='上昇トレンド')?'var(--green)'
-                 :(dowTrend==='下降トレンド')?'var(--red)':'var(--gold)';
-  var reasons   = Array.isArray(r.entry_reason) ? r.entry_reason
-                 : (r.reason ? (Array.isArray(r.reason)?r.reason:r.reason.split('\n').filter(Boolean)) : []);
-  var warningText = r.warning || r.risk || '';
 
   var html = '';
 
   // ── シグナルカード ──
+  var subLabel = trendCurrent ? _trendEnToJa(trendCurrent)+'トレンド' : dowTrend;
+  var subColor  = trendCurrent ? _trendColor(trendCurrent) : _trendColor(dowTrend);
+  var badgeText = confidence ? '信頼度 '+confidence+'/5' : (r.strength || '');
   html += '<div class="signal-card" style="background:'+sigBg+';border:1px solid '+sigBorder+';">'
     + '<div>'
-    + '<div class="signal-main" style="color:'+sigColor+'">'+r.signal+'</div>'
-    + '<div class="signal-sub" style="color:'+dowColor+'">'+dowTrend+'</div>'
+    + '<div class="signal-main" style="color:'+sigColor+'">'+action+'</div>'
+    + '<div class="signal-sub" style="color:'+subColor+'">'+subLabel+'</div>'
     + '</div>'
-    + '<span class="signal-strength" style="background:'+sigBg+';border:1px solid '+sigBorder+';color:'+sigColor+'">'+r.strength+'</span>'
+    + (badgeText ? '<span class="signal-strength" style="background:'+sigBg+';border:1px solid '+sigBorder+';color:'+sigColor+'">'+badgeText+'</span>' : '')
     + '</div>';
 
-  // ── ダウ理論判定カード ──
-  html += '<div class="analysis-card" style="border-color:'+dowColor+';margin-bottom:12px;">'
-    + '<div class="analysis-head" style="color:'+dowColor+'">📐 ダウ理論判定</div>'
-    + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px;">'
-    + '<div style="background:var(--bg);border-radius:8px;padding:10px;">'
-    + '<div style="font-size:9px;color:var(--muted);letter-spacing:1px;margin-bottom:4px;">トレンド</div>'
-    + '<div style="font-size:15px;font-weight:700;color:'+dowColor+';">'+dowTrend+'</div>'
-    + '</div>'
-    + '<div style="background:var(--bg);border-radius:8px;padding:10px;">'
-    + '<div style="font-size:9px;color:var(--muted);letter-spacing:1px;margin-bottom:4px;">判定根拠</div>'
-    + '<div style="font-size:12px;font-weight:700;color:'+dowColor+';">'+dowBasis+'</div>'
-    + '</div>'
-    + '</div>'
-    + '</div>';
+  // ── よすが式ダウ理論カード（上位足 + 現在足） ──
+  if(trendHigher || trendCurrent){
+    var cardColor = trendCurrent ? _trendColor(trendCurrent) : 'var(--gold)';
+    html += '<div class="analysis-card" style="border-color:'+cardColor+';margin-bottom:12px;">'
+      + '<div class="analysis-head" style="color:'+cardColor+'">📐 よすが式ダウ理論</div>'
+      + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px;">';
+    if(trendHigher){
+      html += '<div style="background:var(--bg);border-radius:8px;padding:10px;">'
+        + '<div style="font-size:9px;color:var(--muted);letter-spacing:1px;margin-bottom:4px;">上位足('+r._higherTf+')</div>'
+        + '<div style="font-size:14px;font-weight:700;color:'+_trendColor(trendHigher)+';">'+_trendEnToJa(trendHigher)+'</div>'
+        + '</div>';
+    }
+    if(trendCurrent){
+      html += '<div style="background:var(--bg);border-radius:8px;padding:10px;">'
+        + '<div style="font-size:9px;color:var(--muted);letter-spacing:1px;margin-bottom:4px;">現在足('+r._currentTf+')</div>'
+        + '<div style="font-size:14px;font-weight:700;color:'+_trendColor(trendCurrent)+';">'+_trendEnToJa(trendCurrent)+'</div>'
+        + '</div>';
+    }
+    html += '</div>';
+    if(transition && transition !== 'NONE'){
+      var transColor = transition==='REVERSAL_TO_UP'?'var(--green)':'var(--red)';
+      html += '<div style="margin-top:8px;font-size:12px;color:'+transColor+';font-weight:600;">⚡ '+transition+'</div>';
+    }
+    if(trendStrength && trendStrength !== 'UNKNOWN'){
+      var tsColor = trendStrength==='STRONG'?'var(--green)':trendStrength==='WEAK'?'var(--red)':'var(--gold)';
+      html += '<div style="margin-top:6px;font-size:11px;color:'+tsColor+';">強度: '+trendStrength+'</div>';
+    }
+    html += '</div>';
+  } else {
+    // フォールバック: 旧形式ダウ理論判定
+    var dowColor2 = _trendColor(dowTrend);
+    html += '<div class="analysis-card" style="border-color:'+dowColor2+';margin-bottom:12px;">'
+      + '<div class="analysis-head" style="color:'+dowColor2+'">📐 ダウ理論判定</div>'
+      + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px;">'
+      + '<div style="background:var(--bg);border-radius:8px;padding:10px;">'
+      + '<div style="font-size:9px;color:var(--muted);letter-spacing:1px;margin-bottom:4px;">トレンド</div>'
+      + '<div style="font-size:15px;font-weight:700;color:'+dowColor2+';">'+dowTrend+'</div>'
+      + '</div>'
+      + '<div style="background:var(--bg);border-radius:8px;padding:10px;">'
+      + '<div style="font-size:9px;color:var(--muted);letter-spacing:1px;margin-bottom:4px;">判定根拠</div>'
+      + '<div style="font-size:12px;font-weight:700;color:'+dowColor2+';">'+dowBasis+'</div>'
+      + '</div>'
+      + '</div>'
+      + '</div>';
+  }
 
-  // ── MA20 / ATR ──
+  // ── S/Rライン近接警告 ──
+  if(nearSr && nearSr.is_near){
+    var nsrColor = nearSr.type==='resistance'?'var(--red)':nearSr.type==='support'?'var(--green)':'var(--gold)';
+    html += '<div class="analysis-card" style="border-color:'+nsrColor+';margin-bottom:12px;">'
+      + '<div class="analysis-head" style="color:'+nsrColor+'">⚠ S/Rライン近接</div>'
+      + '<div style="font-size:13px;color:'+nsrColor+';padding:4px 0;">'
+      + (nearSr.type==='resistance'?'レジスタンス':nearSr.type==='support'?'サポート':nearSr.type)
+      + 'ライン付近 ('+(nearSr.tf==='higher'?'上位足':nearSr.tf==='current'?'現在足':nearSr.tf)+')'
+      + '</div>'
+      + '</div>';
+  }
+
+  // ── ATR / RR ──
   html += '<div class="ind-grid">'
-    + '<div class="ind-card"><div class="ind-label">MA20</div><div class="ind-value">'+r.ma20+'</div><div class="ind-sub">移動平均</div></div>'
     + '<div class="ind-card"><div class="ind-label">ATR(14)</div><div class="ind-value">'+(r.atr?parseFloat(r.atr).toFixed(2):'--')+'</div><div class="ind-sub">平均変動幅</div></div>'
+    + (riskReward != null ? '<div class="ind-card"><div class="ind-label">RR比</div><div class="ind-value">1:'+parseFloat(riskReward).toFixed(1)+'</div><div class="ind-sub">リスクリワード</div></div>' : '')
     + '</div>';
 
-  // ── S/Rライン ──
-  if(srItems) html += '<div class="lines-card"><div class="lines-title">S/R ライン（スウィング基準）</div>'+srItems+'</div>';
+  // ── S/Rライン（旧形式フォールバック） ──
+  if(Array.isArray(r.sr)){
+    var srCM = {R1:['rgba(255,77,106,0.15)','#ff4d6a'],R2:['rgba(255,128,153,0.12)','#ff8099'],
+                S1:['rgba(0,217,126,0.15)','#00d97e'],S2:['rgba(102,255,187,0.1)','#66ffbb']};
+    var srItems = '';
+    r.sr.forEach(function(s){
+      var c = srCM[s.label]||['rgba(240,180,41,0.1)','#f0b429'];
+      srItems += lineItem(s.label, s.price, c[0], c[1]);
+    });
+    if(srItems) html += '<div class="lines-card"><div class="lines-title">S/R ライン（スウィング基準）</div>'+srItems+'</div>';
+  }
 
   // ── エントリー根拠 ──
-  if(reasons.length){
-    html += '<div class="analysis-card" style="margin-bottom:12px;">';
-    html += '<div class="analysis-head">📋 エントリー根拠</div>';
-    reasons.forEach(function(re,i){
+  if(reasonsArr.length){
+    html += '<div class="analysis-card" style="margin-bottom:12px;">'
+      + '<div class="analysis-head">📋 エントリー根拠</div>';
+    reasonsArr.forEach(function(re,i){
       html += '<div style="font-size:13px;color:#a0b8d0;padding:5px 0;border-bottom:1px solid var(--border);">'+(i+1)+'. '+re+'</div>';
     });
     html += '</div>';
   }
 
   // ── エントリー ──
+  var displayEntry = (mt5Bid || chartLastClose) > 0 ? (mt5Bid || chartLastClose).toFixed(2) : (r.entry || '--');
+  var rrText = r.rr || (riskReward != null ? '1:'+parseFloat(riskReward).toFixed(1) : '--');
   html += '<div class="entry-card">'
     + entryRow('エントリー', displayEntry, '')
-    + entryRow('TP（利確）', r.tp, 'color:var(--green)')
-    + entryRow('SL（損切）', r.sl, 'color:var(--red)')
+    + entryRow('TP（利確）', takeProfit, 'color:var(--green)')
+    + entryRow('SL（損切）', stopLoss, 'color:var(--red)')
     + entryRow('RR比', rrText, '')
     + '</div>';
 
@@ -2535,7 +2692,7 @@ function renderAI(r){
   if(r.analysis) html += '<div class="analysis-card"><div class="analysis-head">◈ 分析</div><div class="analysis-text">'+r.analysis+'</div></div>';
 
   // ── 注意 ──
-  if(warningText) html += '<div class="analysis-card" style="border-color:'+warnColor+'"><div class="analysis-head" style="color:'+warnColor+'">⚠ 注意</div><div class="analysis-text">'+warningText+'</div></div>';
+  if(warningText) html += '<div class="analysis-card" style="border-color:var(--gold)"><div class="analysis-head" style="color:var(--gold)">⚠ 注意</div><div class="analysis-text">'+warningText+'</div></div>';
 
   document.getElementById('aiPlaceholder').style.display='none';
   var ac = document.getElementById('aiContent');

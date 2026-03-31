@@ -2520,6 +2520,7 @@ async function analyzeWithClaude(){
         messages: [{role:'user', content: JSON.stringify(inputData, null, 2) + '\n\n' + outputSchema}]
       })
     });
+    window._lastAiInput = inputData;
 
     if(!res.ok) throw new Error('Claude API error: ' + res.status);
     var data = await res.json();
@@ -2527,6 +2528,7 @@ async function analyzeWithClaude(){
     var jsonMatch = text.match(/\{[\s\S]*\}/);
     if(!jsonMatch) throw new Error('JSON parse error');
     var r = JSON.parse(jsonMatch[0]);
+    window._lastAiOutput = r;
     r.atr = atr;
     r._higherTf = higherTf;
     r._currentTf = currentTf;

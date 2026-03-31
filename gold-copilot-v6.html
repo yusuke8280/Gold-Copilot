@@ -2567,8 +2567,8 @@ function renderAI(r){
   var transition   = r.transition    || 'NONE';
   var trendStrength = r.trend_strength || null;
   var confidence   = r.confidence    || null;
-  var riskReward   = r.risk_reward   || null;
-  var stopLoss     = r.stop_loss  != null ? r.stop_loss  : (r.sl  != null ? r.sl  : null);
+  var riskReward   = r.risk_reward  != null ? r.risk_reward  : null;
+  var stopLoss     = r.stop_loss   != null ? r.stop_loss   : (r.sl != null ? r.sl : null);
   var takeProfit   = r.take_profit != null ? r.take_profit : (r.tp != null ? r.tp : null);
   var nearSr       = r.near_sr_line  || null;
   var reasonText   = typeof r.reason === 'string' ? r.reason : null;
@@ -2689,8 +2689,8 @@ function renderAI(r){
   var rrText = r.rr || (riskReward != null ? '1:'+parseFloat(riskReward).toFixed(1) : '--');
   html += '<div class="entry-card">'
     + entryRow('エントリー', displayEntry, '')
-    + entryRow('TP（利確）', takeProfit, 'color:var(--green)')
-    + entryRow('SL（損切）', stopLoss, 'color:var(--red)')
+    + entryRow('TP（利確）', takeProfit != null ? takeProfit : '--', 'color:var(--green)')
+    + entryRow('SL（損切）', stopLoss   != null ? stopLoss   : '--', 'color:var(--red)')
     + entryRow('RR比', rrText, '')
     + '</div>';
 

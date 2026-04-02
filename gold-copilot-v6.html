@@ -2500,6 +2500,10 @@ async function analyzeWithClaude(){
     higher_tf_sr_context:  hCtx ? hCtx.sr_context : null,
     current_tf_candles:   last10cur,
     higher_tf_candles:    higherTfCandles.map(function(c){return {o:c.o,h:c.h,l:c.l,c:c.c,bt:c.bt};}),
+    candidate_stop_loss_buy:  (dow.swingLows||[]).length  ? (dow.swingLows||[])[(dow.swingLows||[]).length-1].price  : null,
+    candidate_stop_loss_sell: (dow.swingHighs||[]).length ? (dow.swingHighs||[])[(dow.swingHighs||[]).length-1].price : null,
+    candidate_tp_buy:  hCtx && hCtx.sr_lines ? (function(){ var above=(hCtx.sr_lines).filter(function(p){return p>price;}).sort(function(a,b){return a-b;}); return above.length?above[0]:null; })() : null,
+    candidate_tp_sell: hCtx && hCtx.sr_lines ? (function(){ var below=(hCtx.sr_lines).filter(function(p){return p<price;}).sort(function(a,b){return b-a;}); return below.length?below[0]:null; })() : null,
     position_context: {
       has_position: mt5Positions.length > 0,
       side:         pos ? (pos.type==='POSITION_TYPE_BUY'?'BUY':'SELL') : null,
@@ -2507,9 +2511,9 @@ async function analyzeWithClaude(){
     }
   };
 
-  var systemPrompt = 'あなたはXAUUSD専門のFXトレーダーです。\nよすが式ダウ理論の以下のルールを厳守して分析してください。\n\nルール1: 上位足のトレンドに逆らうエントリーは絶対に提案しない\n\nルール2-BUY:\nBUYを提案してよいのは以下の場合のみです。\n- higher_tf_dow.trend == "UP"\n- higher_tf_sr_context.near_resistance == false\nhigher_tf_sr_context.near_support == true はBUYの禁止条件ではありません。\n上位足サポート付近はBUYにとって有利な場合があります。\n\nルール2-SELL:\nSELLを提案してよいのは以下の場合のみです。\n- higher_tf_dow.trend == "DOWN"\n- higher_tf_sr_context.near_support == false\nhigher_tf_sr_context.near_resistance == true はSELLの禁止条件ではありません。\n上位足レジスタンス付近はSELLにとって有利な場合があります。\n\n重要:\ndistance_to_support / distance_to_resistance は参考情報です。\nライン近接判定はシステム側で near_support / near_resistance として計算済みです。\nClaudeは距離を独自に再解釈せず、必ず near_support / near_resistance の真偽値のみを使って判断してください。\n\nBUY候補の条件（全て満たす場合のみ）:\n- higher_tf_dow.trend == "UP"\n- higher_tf_sr_context.near_resistance == false\n- current_tf_sr_context.near_support == true または transition == "REVERSAL_TO_UP"\n\nSELL候補の条件（全て満たす場合のみ）:\n- higher_tf_dow.trend == "DOWN"\n- higher_tf_sr_context.near_support == false\n- current_tf_sr_context.near_resistance == true または transition == "REVERSAL_TO_DOWN"\n\n上記条件を1つでも満たさない場合は必ずWAITを返す。\n根拠が3つ未満の場合もWAITを返す。\n\nルール3: 根拠が3つ未満の場合はWAITを返す\nルール4: 必ずJSON形式のみで返答する。説明文は不要。\n\nreasonフィールドは必ず日本語の平易な言葉で書いてください。\nコード変数名（near_resistance、higher_tf_sr_context等）やプログラム的な表現は使わないでください。\nトレーダーが直感的に理解できる言葉で2〜3文で説明してください。\n例: ×「higher_tf_sr_context.near_resistance == falseを満たさない」\n   ○「上位足の直近高値に近づきすぎているため、反落リスクがあります」';
+  var systemPrompt = 'あなたはXAUUSD専門のFXトレーダーです。\nよすが式ダウ理論の以下のルールを厳守して分析してください。\n\nルール1: 上位足のトレンドに逆らうエントリーは絶対に提案しない\n\nルール2-BUY:\nBUYを提案してよいのは以下の場合のみです。\n- higher_tf_dow.trend == "UP"\n- higher_tf_sr_context.near_resistance == false\nhigher_tf_sr_context.near_support == true はBUYの禁止条件ではありません。\n上位足サポート付近はBUYにとって有利な場合があります。\n\nルール2-SELL:\nSELLを提案してよいのは以下の場合のみです。\n- higher_tf_dow.trend == "DOWN"\n- higher_tf_sr_context.near_support == false\nhigher_tf_sr_context.near_resistance == true はSELLの禁止条件ではありません。\n上位足レジスタンス付近はSELLにとって有利な場合があります。\n\n重要:\ndistance_to_support / distance_to_resistance は参考情報です。\nライン近接判定はシステム側で near_support / near_resistance として計算済みです。\nClaudeは距離を独自に再解釈せず、必ず near_support / near_resistance の真偽値のみを使って判断してください。\n\nBUY候補の条件（全て満たす場合のみ）:\n- higher_tf_dow.trend == "UP"\n- higher_tf_sr_context.near_resistance == false\n- current_tf_sr_context.near_support == true または transition == "REVERSAL_TO_UP"\n\nSELL候補の条件（全て満たす場合のみ）:\n- higher_tf_dow.trend == "DOWN"\n- higher_tf_sr_context.near_support == false\n- current_tf_sr_context.near_resistance == true または transition == "REVERSAL_TO_DOWN"\n\n上記条件を1つでも満たさない場合は必ずWAITを返す。\n根拠が3つ未満の場合もWAITを返す。\n\nルール3: 根拠が3つ未満の場合はWAITを返す\nルール4: 必ずJSON形式のみで返答する。説明文は不要。\n\nconfidenceの採点基準（以下の条件充足数で決める）:\n+1: 上位足トレンドが明確（UPまたはDOWN）\n+1: 現在足のトレンドが上位足と一致\n+1: transitionがREVERSAL_TO_UPまたはREVERSAL_TO_DOWN\n+1: current_tf_sr_context.near_supportまたはnear_resistanceがtrue\n+1: higher_tf_sr_context.near_resistance（BUY時）またはnear_support（SELL時）がfalse\n充足数がそのままconfidence（1〜5）になる。WAIT時も充足数のままconfidenceを返す。\n\nWAIT時はreasonに以下のどれが原因かを必ず含めること：\n・上位足逆行: 上位足トレンドが逆方向\n・障害ライン近接: 上位足レジスタンス（BUY時）またはサポート（SELL時）に近接\n・転換未発生: transitionがNONEで方向転換が確認できない\n・ライン未接近: current_tfのnear_support/near_resistanceが両方false\n・RR不足: candidate_tpとcandidate_slから計算したRRが1.5未満\n\nWAIT時のwait_reason_categoryには上記原因のうち最も主要なものを1つ返す。BUYまたはSELL時はwait_reason_categoryは"なし"を返す。\n\nreasonフィールドは必ず日本語の平易な言葉で書いてください。\nコード変数名（near_resistance、higher_tf_sr_context等）やプログラム的な表現は使わないでください。\nトレーダーが直感的に理解できる言葉で2〜3文で説明してください。\n例: ×「higher_tf_sr_context.near_resistance == falseを満たさない」\n   ○「上位足の直近高値に近づきすぎているため、反落リスクがあります」';
 
-  var outputSchema = '以下のJSON形式のみで返答してください。\n{\n  "trend_higher": "UP/DOWN/RANGE",\n  "trend_current": "UP/DOWN/RANGE",\n  "transition": "REVERSAL_TO_UP/REVERSAL_TO_DOWN/NONE",\n  "near_sr_line": {"is_near": true/false, "type": "support/resistance/none", "tf": "current/higher/none"},\n  "action": "BUY/SELL/WAIT",\n  "reason": "日本語で2〜3文",\n  "stop_loss": 数値またはnull,\n  "take_profit": 数値またはnull,\n  "risk_reward": 数値またはnull,\n  "confidence": 1〜5の整数,\n  "trend_strength": "STRONG/NORMAL/WEAK/UNKNOWN"\n}';
+  var outputSchema = '以下のJSON形式のみで返答してください。\n{\n  "trend_higher": "UP/DOWN/RANGE",\n  "trend_current": "UP/DOWN/RANGE",\n  "transition": "REVERSAL_TO_UP/REVERSAL_TO_DOWN/NONE",\n  "near_sr_line": {"is_near": true/false, "type": "support/resistance/none", "tf": "current/higher/none"},\n  "action": "BUY/SELL/WAIT",\n  "reason": "日本語で2〜3文",\n  "stop_loss": 数値またはnull,\n  "take_profit": 数値またはnull,\n  "risk_reward": 数値またはnull,\n  "confidence": 1〜5の整数,\n  "trend_strength": "STRONG/NORMAL/WEAK/UNKNOWN",\n  "wait_reason_category": "上位足逆行/障害ライン近接/転換未発生/ライン未接近/RR不足/なし"\n}';
 
   // ローディング表示
   document.getElementById('aiPlaceholder').style.display='flex';
@@ -2575,6 +2579,7 @@ function renderAI(r){
   var takeProfit   = r.take_profit != null ? r.take_profit : (r.tp != null ? r.tp : null);
   var nearSr       = r.near_sr_line  || null;
   var reasonText   = typeof r.reason === 'string' ? r.reason : null;
+  var waitReasonCategory = r.wait_reason_category || null;
   var reasonsArr   = Array.isArray(r.entry_reason) ? r.entry_reason
                    : (reasonText ? [reasonText] : []);
   var dowTrend     = r.dow_trend || '--';
@@ -2698,6 +2703,7 @@ function renderAI(r){
   if(action === 'WAIT' && reasonText){
     html += '<div class="analysis-card" style="border:1px solid var(--gold);margin-bottom:12px;">'
       + '<div style="font-size:11px;color:var(--gold);font-weight:700;margin-bottom:6px;">⏸ 見送り理由:</div>'
+      + (waitReasonCategory && waitReasonCategory !== 'なし' ? '<div style="font-size:11px;color:var(--gold);font-weight:600;margin-bottom:6px;">原因: '+waitReasonCategory+'</div>' : '')
       + '<div style="font-size:13px;color:#e0c870;line-height:1.6;">'+reasonText+'</div>'
       + '</div>';
   } else if(reasonsArr.length){

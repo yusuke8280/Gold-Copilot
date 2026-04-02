@@ -570,7 +570,7 @@ canvas{display:block;width:100% !important;}
 <!-- AI 全画面モーダル -->
 <div class="ai-overlay" id="aiOverlay">
   <div class="ai-header">
-    <span class="ai-header-title">⚡ AI ANALYSIS</span>
+    <span class="ai-header-title">⚡ AI ANALYSIS <span id="aiLogCount" style="font-size:10px;color:var(--muted);font-weight:400;letter-spacing:0;"></span></span>
     <button class="ai-close-btn" onclick="closeAI()">✕ 閉じる</button>
   </div>
   <div class="ai-body" id="aiBody">
@@ -705,7 +705,8 @@ var nearLineAtrMultiplier = {
 var higherTfCandles = [];
 var higherTfDow = null;
 var higherTfCacheTime = 0;
-var aiAnalysisLog = [];
+var aiAnalysisLog = JSON.parse(localStorage.getItem('gc_ai_log') || '[]');
+window._aiLog = aiAnalysisLog;
 
 // ══ INIT ══
 window.addEventListener('DOMContentLoaded', function(){
@@ -2193,6 +2194,18 @@ function openAI(){
   document.getElementById('aiContent').style.display='none';
 }
 function closeAI(){ document.getElementById('aiOverlay').classList.remove('show'); }
+function downloadAiLog(){
+  var today = new Date();
+  var ymd = today.getFullYear().toString()
+    + ('0'+(today.getMonth()+1)).slice(-2)
+    + ('0'+today.getDate()).slice(-2);
+  var blob = new Blob([JSON.stringify(aiAnalysisLog, null, 2)], {type:'application/json'});
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'gc_ai_log_' + ymd + '.json';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
 
 // ── ポジション詳細モーダル ──
 function openPosModal(){
@@ -2558,7 +2571,28 @@ async function analyzeWithClaude(){
       risk_reward: r.risk_reward
     });
     window._aiLog = aiAnalysisLog;
+    localStorage.setItem('gc_ai_log', JSON.stringify(aiAnalysisLog.slice(-200)));
     console.log('[AI Log] 保存完了 合計:', aiAnalysisLog.length, '件');
+
+    // WATCH→BUY/SELL遷移検知
+    if(r.action === 'BUY' || r.action === 'SELL'){
+      var watchSide = r.action === 'BUY' ? 'WATCH_BUY' : 'WATCH_SELL';
+      var now = Date.now();
+      var recent = aiAnalysisLog.slice(-6, -1); // 直前5件（今追加したものを除く）
+      for(var wi = recent.length - 1; wi >= 0; wi--){
+        var wEntry = recent[wi];
+        if(wEntry.action === watchSide && wEntry.tf === currentTf
+           && !wEntry.transition_to
+           && (now - new Date(wEntry.timestamp).getTime()) < 15 * 60 * 1000){
+          wEntry.transition_to = r.action;
+          wEntry.transition_time = new Date().toISOString();
+          localStorage.setItem('gc_ai_log', JSON.stringify(aiAnalysisLog.slice(-200)));
+          console.log('[AI Log] WATCH→' + r.action + ' 遷移を検出');
+          break;
+        }
+      }
+    }
+
     r.atr = atr;
     r._higherTf = higherTf;
     r._currentTf = currentTf;
@@ -2757,12 +2791,19 @@ function renderAI(r){
   // ── 注意 ──
   if(warningText) html += '<div class="analysis-card" style="border-color:var(--gold)"><div class="analysis-head" style="color:var(--gold)">⚠ 注意</div><div class="analysis-text">'+warningText+'</div></div>';
 
+  // 📥 ログ保存ボタン
+  html += '<div style="text-align:right;margin-top:8px;padding-bottom:4px;">'
+    + '<button onclick="downloadAiLog()" style="background:#2a3548;border:1px solid #3a4d66;color:#8aaccc;font-size:11px;padding:5px 10px;border-radius:6px;cursor:pointer;font-family:inherit;">📥 ログ保存</button>'
+    + '</div>';
+
   document.getElementById('aiPlaceholder').style.display='none';
   var ac = document.getElementById('aiContent');
   ac.innerHTML = html;
   ac.style.display = 'flex';
   ac.style.flexDirection = 'column';
   document.getElementById('aiBody').scrollTop = 0;
+  var logCountEl = document.getElementById('aiLogCount');
+  if(logCountEl) logCountEl.textContent = '(ログ: ' + aiAnalysisLog.length + '件)';
 }
 function lineItem(name,price,bg,color){
   return '<div class="line-item"><span class="line-name">'+name+'</span>'

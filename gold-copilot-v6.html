@@ -692,6 +692,8 @@ var _reconnectTimer = null;        // 自動再接続タイマー
 var _reconnectCount = 0;           // 再接続試行回数
 var _fetchFailCount = 0;           // fetchMT5Data 連続失敗回数
 var _orderInProgress = false;      // 発注処理中フラグ（二重送信防止）
+var _lastToastMessage = '';
+var _lastToastTime = 0;
 
 // ── よすが式ダウ理論 AI分析 グローバル設定 ──
 var higherTfMap = {
@@ -859,7 +861,11 @@ async function fetchHigherTfCandles(higherTf) {
       return;
     }
     if(!res.ok) {
-      console.log('[higherTf] 取得失敗 status:', res.status);
+      if(res.status === 404){
+        console.log('[expected 404] current-candle 市場クローズ中または未提供');
+      } else {
+        console.log('[higherTf] 取得失敗 status:', res.status);
+      }
       higherTfCandles = [];
       return;
     }
@@ -2030,8 +2036,12 @@ async function refreshCurrentCandleFromAPI() {
     return;
   }
   if(!r.ok){
-    console.warn('[refreshCurrentCandle] HTTP', r.status);
-    if(r.status !== 404) showTrdToast('チャート同期失敗 (HTTP ' + r.status + ')', '#ff8c00');
+    if(r.status === 404){
+      console.log('[expected 404] current-candle 市場クローズ中または未提供');
+    } else {
+      console.warn('[refreshCurrentCandle] HTTP', r.status);
+      showTrdToast('チャート同期失敗 (HTTP ' + r.status + ')', '#ff8c00');
+    }
     return;
   }
   var cur;
@@ -2194,6 +2204,47 @@ function openAI(){
   document.getElementById('aiContent').style.display='none';
 }
 function closeAI(){ document.getElementById('aiOverlay').classList.remove('show'); }
+function showAiLogSummary(){
+  var log = aiAnalysisLog;
+  var total = log.length;
+  // action別
+  var actions = {BUY:0,SELL:0,WATCH_BUY:0,WATCH_SELL:0,WAIT:0};
+  // WAIT理由
+  var waitReasons = {'上位足逆行':0,'障害ライン近接':0,'転換未発生':0,'ライン未接近':0,'RR不足':0};
+  // confidence分布
+  var conf = {1:0,2:0,3:0,4:0,5:0};
+  // WATCH遷移
+  var transitioned = 0, notTransitioned = 0;
+  log.forEach(function(e){
+    var a = e.action || 'WAIT';
+    if(actions[a] !== undefined) actions[a]++; else actions[a] = 1;
+    if(a === 'WAIT' && e.wait_reason_category && waitReasons[e.wait_reason_category] !== undefined){
+      waitReasons[e.wait_reason_category]++;
+    }
+    if(e.confidence >= 1 && e.confidence <= 5) conf[e.confidence]++;
+    if(a === 'WATCH_BUY' || a === 'WATCH_SELL'){
+      if(e.transition_to) transitioned++; else notTransitioned++;
+    }
+  });
+  var msg = '【AI分析ログ集計】\n総件数: ' + total + '件\n\n'
+    + '■ action別件数\n'
+    + 'BUY: '        + actions.BUY       + '件\n'
+    + 'SELL: '       + actions.SELL      + '件\n'
+    + 'WATCH_BUY: '  + actions.WATCH_BUY + '件\n'
+    + 'WATCH_SELL: ' + actions.WATCH_SELL+ '件\n'
+    + 'WAIT: '       + actions.WAIT      + '件\n\n'
+    + '■ WAIT理由内訳\n'
+    + '上位足逆行: '    + waitReasons['上位足逆行']    + '件\n'
+    + '障害ライン近接: ' + waitReasons['障害ライン近接'] + '件\n'
+    + '転換未発生: '    + waitReasons['転換未発生']    + '件\n'
+    + 'ライン未接近: '  + waitReasons['ライン未接近']  + '件\n'
+    + 'RR不足: '       + waitReasons['RR不足']       + '件\n\n'
+    + '■ confidence分布\n'
+    + '1: ' + conf[1] + '件 / 2: ' + conf[2] + '件 / 3: ' + conf[3] + '件 / 4: ' + conf[4] + '件 / 5: ' + conf[5] + '件\n\n'
+    + '■ WATCH→BUY/SELL遷移\n'
+    + '遷移あり: ' + transitioned + '件 / 遷移なし: ' + notTransitioned + '件';
+  alert(msg);
+}
 function downloadAiLog(){
   var today = new Date();
   var ymd = today.getFullYear().toString()
@@ -2791,8 +2842,9 @@ function renderAI(r){
   // ── 注意 ──
   if(warningText) html += '<div class="analysis-card" style="border-color:var(--gold)"><div class="analysis-head" style="color:var(--gold)">⚠ 注意</div><div class="analysis-text">'+warningText+'</div></div>';
 
-  // 📥 ログ保存ボタン
-  html += '<div style="text-align:right;margin-top:8px;padding-bottom:4px;">'
+  // 📥 ログ保存 / 📊 ログ集計 ボタン
+  html += '<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:8px;padding-bottom:4px;">'
+    + '<button onclick="showAiLogSummary()" style="background:#2a3548;border:1px solid #3a4d66;color:#8aaccc;font-size:11px;padding:5px 10px;border-radius:6px;cursor:pointer;font-family:inherit;">📊 ログ集計</button>'
     + '<button onclick="downloadAiLog()" style="background:#2a3548;border:1px solid #3a4d66;color:#8aaccc;font-size:11px;padding:5px 10px;border-radius:6px;cursor:pointer;font-family:inherit;">📥 ログ保存</button>'
     + '</div>';
 
@@ -3086,6 +3138,10 @@ function closeTrdOverlay(){
 }
 
 function showTrdToast(msg, color){
+  var now = Date.now();
+  if(msg === _lastToastMessage && now - _lastToastTime < 30000) return;
+  _lastToastMessage = msg;
+  _lastToastTime = now;
   var el = document.getElementById('trdToast');
   el.textContent = msg;
   el.style.borderColor = color || 'var(--border)';

@@ -1947,6 +1947,10 @@ async function fetchMT5Data(){
     _fetchFailCount = 0;
     return true;
   } catch(e){
+    if(e && e.message && (e.message.includes('504') || e.message.includes('timeout'))){
+      console.log('[expected] fetchMT5Data タイムアウト:', e.message);
+      return false;
+    }
     _fetchFailCount++;
     console.log('[MT5接続] 失敗 (連続', _fetchFailCount, '回)', e);
     if(_fetchFailCount >= 3 && mt5Connected) {
@@ -2032,12 +2036,16 @@ async function refreshCurrentCandleFromAPI() {
       {headers:{'auth-token':MT5_TOKEN}});
   } catch(e){
     console.warn('[refreshCurrentCandle] fetch失敗:', e);
-    showTrdToast('チャート同期失敗', '#ff8c00');
+    if(Date.now() - _lastToastTime > 60000){
+      showTrdToast('チャート同期失敗', '#ff8c00');
+    }
     return;
   }
   if(!r.ok){
     if(r.status === 404){
       console.log('[expected 404] current-candle 市場クローズ中または未提供');
+    } else if(r.status === 503 || r.status === 504){
+      console.log('[expected] current-candle サーバー一時停止:', r.status);
     } else {
       console.warn('[refreshCurrentCandle] HTTP', r.status);
       showTrdToast('チャート同期失敗 (HTTP ' + r.status + ')', '#ff8c00');

@@ -276,6 +276,41 @@ canvas{display:block;width:100% !important;}
   font-family:'Space Mono',monospace;font-size:12px;font-weight:700;
   color:#fff;cursor:pointer;margin-bottom:8px;
 }
+/* ── ログ集計モーダル ── */
+.log-sum-section{
+  background:var(--surface2);border:1px solid var(--border);
+  border-radius:10px;padding:12px 14px;margin-bottom:10px;
+}
+.log-sum-head{
+  font-size:11px;color:var(--gold);letter-spacing:1px;
+  margin-bottom:8px;font-weight:700;
+}
+.log-sum-grid{
+  display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;
+}
+.log-sum-item{
+  background:var(--bg);border-radius:6px;padding:8px;
+  display:flex;flex-direction:column;gap:3px;
+}
+.log-sum-label{font-size:10px;color:var(--muted);}
+.log-sum-val{font-size:14px;font-weight:700;}
+.log-sum-row{
+  display:flex;justify-content:space-between;align-items:center;
+  padding:4px 0;border-bottom:1px solid var(--border);font-size:13px;
+}
+.log-sum-row:last-child{border-bottom:none;}
+.log-sum-conf{
+  display:grid;grid-template-columns:repeat(5,1fr);gap:6px;
+}
+.log-sum-conf-item{
+  background:var(--bg);border-radius:6px;padding:8px 4px;
+  text-align:center;font-size:13px;font-weight:700;
+}
+.log-sum-trade{
+  background:var(--bg);border-radius:8px;
+  padding:10px 12px;margin-bottom:8px;
+}
+.log-sum-trade:last-child{margin-bottom:0;}
 .advice-box{
   border-radius:10px;padding:12px;margin-bottom:12px;
   font-size:13px;line-height:1.7;
@@ -614,6 +649,15 @@ canvas{display:block;width:100% !important;}
   </div>
 </div>
 
+<!-- ログ集計モーダル -->
+<div class="pos-modal-overlay" id="logSummaryModal">
+  <div class="pos-modal">
+    <div class="modal-handle"></div>
+    <div id="logSummaryContent"></div>
+    <button class="modal-close" onclick="closeLogSummaryModal()">CLOSE</button>
+  </div>
+</div>
+
 <!-- トレード確認モーダル -->
 <div class="trd-overlay" id="trdOverlay">
   <div class="trd-modal">
@@ -757,7 +801,7 @@ window.addEventListener('DOMContentLoaded', function(){
     analyzeChart();
   });
   // 設定モーダルの外側タップで閉じる
-  ['settingsModal','pnlModal','posModal','histModal'].forEach(function(id){
+  ['settingsModal','pnlModal','posModal','histModal','logSummaryModal'].forEach(function(id){
     document.getElementById(id).addEventListener('click', function(e){
       if(e.target === this) this.classList.remove('show');
     });
@@ -2219,6 +2263,8 @@ function showAiLogSummary(){
   var actions = {BUY:0,SELL:0,WATCH_BUY:0,WATCH_SELL:0,WAIT:0};
   // WAIT理由
   var waitReasons = {'上位足逆行':0,'障害ライン近接':0,'転換未発生':0,'ライン未接近':0,'RR不足':0};
+  // WATCH内訳（wait_reason_category）
+  var watchReasons = {'転換未発生':0,'ライン未接近':0,'その他':0};
   // confidence分布
   var conf = {1:0,2:0,3:0,4:0,5:0};
   // WATCH遷移
@@ -2229,29 +2275,97 @@ function showAiLogSummary(){
     if(a === 'WAIT' && e.wait_reason_category && waitReasons[e.wait_reason_category] !== undefined){
       waitReasons[e.wait_reason_category]++;
     }
+    if((a === 'WATCH_BUY' || a === 'WATCH_SELL') && e.wait_reason_category){
+      if(watchReasons[e.wait_reason_category] !== undefined) watchReasons[e.wait_reason_category]++;
+      else watchReasons['その他']++;
+    }
     if(e.confidence >= 1 && e.confidence <= 5) conf[e.confidence]++;
     if(a === 'WATCH_BUY' || a === 'WATCH_SELL'){
       if(e.transition_to) transitioned++; else notTransitioned++;
     }
   });
-  var msg = '【AI分析ログ集計】\n総件数: ' + total + '件\n\n'
-    + '■ action別件数\n'
-    + 'BUY: '        + actions.BUY       + '件\n'
-    + 'SELL: '       + actions.SELL      + '件\n'
-    + 'WATCH_BUY: '  + actions.WATCH_BUY + '件\n'
-    + 'WATCH_SELL: ' + actions.WATCH_SELL+ '件\n'
-    + 'WAIT: '       + actions.WAIT      + '件\n\n'
-    + '■ WAIT理由内訳\n'
-    + '上位足逆行: '    + waitReasons['上位足逆行']    + '件\n'
-    + '障害ライン近接: ' + waitReasons['障害ライン近接'] + '件\n'
-    + '転換未発生: '    + waitReasons['転換未発生']    + '件\n'
-    + 'ライン未接近: '  + waitReasons['ライン未接近']  + '件\n'
-    + 'RR不足: '       + waitReasons['RR不足']       + '件\n\n'
-    + '■ confidence分布\n'
-    + '1: ' + conf[1] + '件 / 2: ' + conf[2] + '件 / 3: ' + conf[3] + '件 / 4: ' + conf[4] + '件 / 5: ' + conf[5] + '件\n\n'
-    + '■ WATCH→BUY/SELL遷移\n'
-    + '遷移あり: ' + transitioned + '件 / 遷移なし: ' + notTransitioned + '件';
-  alert(msg);
+  // 直近BUY/SELL 最新3件（新しい順）
+  var buySellEntries = log.filter(function(e){ return e.action === 'BUY' || e.action === 'SELL'; }).slice(-3).reverse();
+
+  var h = '';
+  h += '<div class="modal-title">AI LOG SUMMARY</div>';
+  h += '<div style="text-align:center;color:var(--muted);font-size:11px;margin-bottom:12px;">総件数: <span style="color:var(--gold);font-weight:700;">' + total + '件</span></div>';
+
+  // action別
+  h += '<div class="log-sum-section">';
+  h += '<div class="log-sum-head">■ action別件数</div>';
+  h += '<div class="log-sum-grid">';
+  h += '<div class="log-sum-item"><div class="log-sum-label">BUY</div><div class="log-sum-val" style="color:var(--green)">' + actions.BUY + '件</div></div>';
+  h += '<div class="log-sum-item"><div class="log-sum-label">SELL</div><div class="log-sum-val" style="color:var(--red)">' + actions.SELL + '件</div></div>';
+  h += '<div class="log-sum-item"><div class="log-sum-label">WAIT</div><div class="log-sum-val">' + actions.WAIT + '件</div></div>';
+  h += '<div class="log-sum-item"><div class="log-sum-label">WATCH_BUY</div><div class="log-sum-val">' + actions.WATCH_BUY + '件</div></div>';
+  h += '<div class="log-sum-item"><div class="log-sum-label">WATCH_SELL</div><div class="log-sum-val">' + actions.WATCH_SELL + '件</div></div>';
+  h += '</div>';
+  h += '</div>';
+
+  // WATCH内訳
+  h += '<div class="log-sum-section">';
+  h += '<div class="log-sum-head">■ WATCH内訳</div>';
+  h += '<div class="log-sum-row"><span>転換未発生</span><span>' + watchReasons['転換未発生'] + '件</span></div>';
+  h += '<div class="log-sum-row"><span>ライン未接近</span><span>' + watchReasons['ライン未接近'] + '件</span></div>';
+  if(watchReasons['その他'] > 0) h += '<div class="log-sum-row"><span>その他</span><span>' + watchReasons['その他'] + '件</span></div>';
+  h += '</div>';
+
+  // WAIT理由
+  h += '<div class="log-sum-section">';
+  h += '<div class="log-sum-head">■ WAIT理由内訳</div>';
+  ['上位足逆行','障害ライン近接','転換未発生','ライン未接近','RR不足'].forEach(function(k){
+    h += '<div class="log-sum-row"><span>' + k + '</span><span>' + waitReasons[k] + '件</span></div>';
+  });
+  h += '</div>';
+
+  // confidence分布
+  h += '<div class="log-sum-section">';
+  h += '<div class="log-sum-head">■ confidence分布</div>';
+  h += '<div class="log-sum-conf">';
+  [1,2,3,4,5].forEach(function(n){
+    h += '<div class="log-sum-conf-item"><div style="color:var(--muted);font-size:10px;">★' + n + '</div><div>' + conf[n] + '</div></div>';
+  });
+  h += '</div>';
+  h += '</div>';
+
+  // 直近BUY/SELL
+  h += '<div class="log-sum-section">';
+  h += '<div class="log-sum-head">■ 直近BUY/SELL事例（最新3件）</div>';
+  if(!buySellEntries.length){
+    h += '<div style="color:var(--muted);font-size:12px;padding:4px 0;">データなし</div>';
+  } else {
+    buySellEntries.forEach(function(e){
+      var isBuy = e.action === 'BUY';
+      var timeStr = e.timestamp
+        ? new Date(e.timestamp).toLocaleString('ja-JP',{timeZone:'Asia/Tokyo',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})
+        : '---';
+      var tp = e.take_profit != null ? (+e.take_profit).toFixed(2) : '---';
+      var sl = e.stop_loss  != null ? (+e.stop_loss ).toFixed(2) : '---';
+      var rr = e.risk_reward != null ? (+e.risk_reward).toFixed(2) : '---';
+      h += '<div class="log-sum-trade" style="border-left:3px solid ' + (isBuy ? 'var(--green)' : 'var(--red)') + '">';
+      h += '<div style="display:flex;justify-content:space-between;margin-bottom:4px;">';
+      h += '<span style="color:' + (isBuy ? 'var(--green)' : 'var(--red)') + ';font-weight:700;">' + e.action + '</span>';
+      h += '<span style="color:var(--muted);font-size:11px;">' + timeStr + ' / ' + (e.tf || '---') + '</span>';
+      h += '</div>';
+      h += '<div style="font-size:11px;color:var(--muted);">confidence:' + (e.confidence || '?') + '&nbsp;&nbsp;TP:' + tp + '&nbsp;&nbsp;SL:' + sl + '&nbsp;&nbsp;RR:' + rr + '</div>';
+      h += '</div>';
+    });
+  }
+  h += '</div>';
+
+  // WATCH→遷移
+  h += '<div class="log-sum-section">';
+  h += '<div class="log-sum-head">■ WATCH→BUY/SELL遷移</div>';
+  h += '<div class="log-sum-row"><span>遷移あり</span><span style="color:var(--green)">' + transitioned + '件</span></div>';
+  h += '<div class="log-sum-row"><span>遷移なし（WATCH止まり）</span><span style="color:var(--muted)">' + notTransitioned + '件</span></div>';
+  h += '</div>';
+
+  document.getElementById('logSummaryContent').innerHTML = h;
+  document.getElementById('logSummaryModal').classList.add('show');
+}
+function closeLogSummaryModal(){
+  document.getElementById('logSummaryModal').classList.remove('show');
 }
 function downloadAiLog(){
   var today = new Date();

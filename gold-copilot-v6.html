@@ -2696,7 +2696,7 @@ async function analyzeWithClaude(){
     current_price: price,
     atr_current:   +atr.toFixed(2),
     current_tf_dow: {
-      trend:      _trendToEn(dow.trend),
+      trend:      dow.trendKey || _trendToEn(dow.trend),
       transition: 'NONE',
       hh_count:   curCounts.hh,
       hl_count:   curCounts.hl,
@@ -2704,7 +2704,7 @@ async function analyzeWithClaude(){
       ll_count:   curCounts.ll
     },
     higher_tf_dow: hCtx ? {
-      trend:      _trendToEn(hCtx.dow.trend),
+      trend:      hCtx.dow.trendKey || _trendToEn(hCtx.dow.trend),
       transition: 'NONE',
       hh_count:   higherCounts.hh,
       hl_count:   higherCounts.hl,
@@ -3581,17 +3581,17 @@ function calcDowTheory(candles) {
   var bullScore = hhCount + hlCount;
   var bearScore = lhCount + llCount;
   var diff = bullScore - bearScore;
-  var trend, trendDetail, trendColor;
+  var trend, trendKey, trendDetail, trendColor;
   if(diff >= 2){
-    trend='上昇トレンド'; trendDetail='HH+HL 明確優勢'; trendColor='var(--green)';
+    trend='上昇トレンド'; trendDetail='HH+HL 明確優勢'; trendColor='var(--green)'; trendKey='UP';
   } else if(diff <= -2){
-    trend='下降トレンド'; trendDetail='LH+LL 明確優勢'; trendColor='var(--red)';
+    trend='下降トレンド'; trendDetail='LH+LL 明確優勢'; trendColor='var(--red)'; trendKey='DOWN';
   } else if(diff === 1){
-    trend='上昇バイアス'; trendDetail='HH+HL やや優勢'; trendColor='#66cc88';
+    trend='上昇バイアス'; trendDetail='HH+HL やや優勢'; trendColor='#66cc88'; trendKey='BULLISH_BIAS';
   } else if(diff === -1){
-    trend='下降バイアス'; trendDetail='LH+LL やや優勢'; trendColor='#ff8099';
+    trend='下降バイアス'; trendDetail='LH+LL やや優勢'; trendColor='#ff8099'; trendKey='BEARISH_BIAS';
   } else {
-    trend='レンジ相場'; trendDetail='方向感なし'; trendColor='var(--gold)';
+    trend='レンジ相場'; trendDetail='方向感なし'; trendColor='var(--gold)'; trendKey='RANGE';
   }
 
   var atr = calcATR(candles, 14);
@@ -3601,7 +3601,7 @@ function calcDowTheory(candles) {
     .sort(function(a,b){return a-b;}).slice(0,3);
 
   return {
-    trend:trend, trendDetail:trendDetail, trendColor:trendColor,
+    trend:trend, trendKey:trendKey, trendDetail:trendDetail, trendColor:trendColor,
     swingHighs:swingHighs, swingLows:swingLows,
     recentHighs:recentHighs, recentLows:recentLows,
     resistanceLevels:resistanceLevels, supportLevels:supportLevels,

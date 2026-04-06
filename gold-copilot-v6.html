@@ -934,14 +934,44 @@ async function fetchHigherTfCandles(higherTf) {
 function buildHigherTfContext(candles, higherTf) {
   if(!candles || !candles.length) return null;
   var dow = calcDowTheory(candles);
-  var swingHighs = (dow.swingHighs || []).slice(-3);
-  var swingLows  = (dow.swingLows  || []).slice(-3);
-  var srHighs = (dow.recentHighs || []).slice(-3).map(function(s){return s.price;});
-  var srLows  = (dow.recentLows  || []).slice(-3).map(function(s){return s.price;});
-  var sr_lines = srHighs.concat(srLows);
+  var swingHighs = (dow.swingHighs || []).slice(-10);
+  var swingLows  = (dow.swingLows  || []).slice(-10);
+
+  // スイング高値・安値から候補ラインを収集（直近10点ずつ）
+  var candidates = (dow.recentHighs || []).slice(-10).map(function(s){return s.price;})
+    .concat((dow.recentLows || []).slice(-10).map(function(s){return s.price;}));
+
+  console.log('[higherTf SR] 統合前候補数:', candidates.length);
+
+  // 近接ゾーン統合: ATR×0.3以内を同一ゾーンとみなし平均値を代表価格にする
+  var atr = dow.atr || 1;
+  var zoneThr = atr * 0.3;
+  var sorted = candidates.slice().sort(function(a,b){return a-b;});
+  var zones = [];
+  sorted.forEach(function(p) {
+    var last = zones[zones.length - 1];
+    if(last && (p - last[last.length - 1]) <= zoneThr) {
+      last.push(p);
+    } else {
+      zones.push([p]);
+    }
+  });
+  var sr_lines = zones.slice(0, 8).map(function(z) {
+    return +(z.reduce(function(s,v){return s+v;}, 0) / z.length).toFixed(2);
+  });
+
+  console.log('[higherTf SR] 統合後ライン数:', sr_lines.length);
+
   var price = mt5Bid || chartLastClose;
   var supports    = sr_lines.filter(function(p){return p <= price;}).sort(function(a,b){return b-a;});
   var resistances = sr_lines.filter(function(p){return p >= price;}).sort(function(a,b){return a-b;});
+
+  // 現在価格に近い順にソート
+  sr_lines.sort(function(a,b){return Math.abs(a-price) - Math.abs(b-price);});
+
+  console.log('[higherTf SR] nearest_support:', supports[0]||null, 'distance:', supports[0]!=null ? +(price-supports[0]).toFixed(2) : null);
+  console.log('[higherTf SR] nearest_resistance:', resistances[0]||null, 'distance:', resistances[0]!=null ? +(resistances[0]-price).toFixed(2) : null);
+
   return {
     dow: dow,
     swings: {
@@ -954,8 +984,8 @@ function buildHigherTfContext(candles, higherTf) {
       nearest_resistance:     resistances[0] || null,
       distance_to_support:    supports[0]    != null ? +(price - supports[0]).toFixed(2)    : null,
       distance_to_resistance: resistances[0] != null ? +(resistances[0] - price).toFixed(2) : null,
-      near_support:    supports[0]    != null ? (price - supports[0])    <= dow.atr * (nearLineAtrMultiplier[higherTf]||0.18) : false,
-      near_resistance: resistances[0] != null ? (resistances[0] - price) <= dow.atr * (nearLineAtrMultiplier[higherTf]||0.18) : false
+      near_support:    supports[0]    != null ? (price - supports[0])    <= atr * (nearLineAtrMultiplier[higherTf]||0.18) : false,
+      near_resistance: resistances[0] != null ? (resistances[0] - price) <= atr * (nearLineAtrMultiplier[higherTf]||0.18) : false
     }
   };
 }

@@ -2289,6 +2289,8 @@ function openAI(){
 function closeAI(){ document.getElementById('aiOverlay').classList.remove('show'); }
 function showAiLogSummary(){
   var log = aiAnalysisLog;
+  var newLogs = log.filter(function(e){ return e.trend_higher_key; });
+  var oldLogs = log.filter(function(e){ return !e.trend_higher_key; });
   var total = log.length;
   // action別
   var actions = {BUY:0,SELL:0,WATCH_BUY:0,WATCH_SELL:0,WAIT:0};
@@ -2300,9 +2302,9 @@ function showAiLogSummary(){
   var conf = {1:0,2:0,3:0,4:0,5:0};
   // WATCH遷移
   var transitioned = 0, notTransitioned = 0;
-  // 上位足トレンド別件数
+  // 上位足トレンド別件数（newLogsのみ）
   var trendCounts = {UP:0,DOWN:0,BULLISH_BIAS:0,BEARISH_BIAS:0,RANGE:0};
-  // トレンド×actionクロス集計
+  // トレンド×actionクロス集計（newLogsのみ）
   var trendAction = {
     UP:           {BUY:0,WATCH_BUY:0,WAIT:0},
     DOWN:         {SELL:0,WATCH_SELL:0,WAIT:0},
@@ -2324,11 +2326,13 @@ function showAiLogSummary(){
     if(a === 'WATCH_BUY' || a === 'WATCH_SELL'){
       if(e.transition_to) transitioned++; else notTransitioned++;
     }
-    // 上位足トレンド集計
-    var tk = e.trend_higher_key || null;
-    if(tk && trendCounts[tk] !== undefined) trendCounts[tk]++;
-    // クロス集計
-    if(tk && trendAction[tk]){
+  });
+  // 新フォーマットのみクロス集計
+  newLogs.forEach(function(e){
+    var a = e.action || 'WAIT';
+    var tk = e.trend_higher_key;
+    if(trendCounts[tk] !== undefined) trendCounts[tk]++;
+    if(trendAction[tk]){
       var bucket = trendAction[tk];
       if(bucket[a] !== undefined) bucket[a]++;
       else if(bucket['WAIT'] !== undefined) bucket['WAIT']++;
@@ -2339,7 +2343,9 @@ function showAiLogSummary(){
 
   var h = '';
   h += '<div class="modal-title">AI LOG SUMMARY</div>';
-  h += '<div style="text-align:center;color:var(--muted);font-size:11px;margin-bottom:12px;">総件数: <span style="color:var(--gold);font-weight:700;">' + total + '件</span></div>';
+  h += '<div style="text-align:center;color:var(--muted);font-size:11px;margin-bottom:12px;">総件数: <span style="color:var(--gold);font-weight:700;">' + total + '件</span>'
+    + '&nbsp;<span style="color:var(--muted);">（新フォーマット: <span style="color:#8aaccc;">' + newLogs.length + '件</span> / 旧フォーマット: ' + oldLogs.length + '件）</span>'
+    + '</div>';
 
   // action別
   h += '<div class="log-sum-section">';
@@ -2823,7 +2829,17 @@ async function analyzeWithClaude(){
       near_sr_line: r.near_sr_line,
       stop_loss: r.stop_loss,
       take_profit: r.take_profit,
-      risk_reward: r.risk_reward
+      risk_reward: r.risk_reward,
+      watch_missing_conditions: (function(){
+        if(r.action !== 'WATCH_BUY' && r.action !== 'WATCH_SELL') return null;
+        var missing = [];
+        var _inp = window._lastAiInput || {};
+        var _csr = _inp.current_tf_sr_context || {};
+        if(r.transition === 'NONE') missing.push('transition');
+        if(r.action === 'WATCH_BUY'  && _csr.near_support    === false) missing.push('near_support');
+        if(r.action === 'WATCH_SELL' && _csr.near_resistance === false) missing.push('near_resistance');
+        return missing.length ? missing : null;
+      })()
     });
     window._aiLog = aiAnalysisLog;
     localStorage.setItem('gc_ai_log', JSON.stringify(aiAnalysisLog.slice(-200)));
@@ -3011,9 +3027,18 @@ function renderAI(r){
 
   // ── 修正5: WAIT時のreason 強調 / WATCH監視候補ボックス / エントリー根拠 ──
   if(isWatch && reasonText){
+    var missingConds = [];
+    var inp = window._lastAiInput || {};
+    var curSr = inp.current_tf_sr_context || {};
+    if(r.transition === 'NONE') missingConds.push('転換シグナル待ち');
+    if(isWatchBuy  && curSr.near_support    === false) missingConds.push('サポート接近待ち');
+    if(isWatchSell && curSr.near_resistance === false) missingConds.push('レジスタンス接近待ち');
     html += '<div class="analysis-card" style="border:1px solid var(--gold);margin-bottom:12px;">'
       + '<div style="font-size:11px;color:var(--gold);font-weight:700;margin-bottom:6px;">📋 監視条件:</div>'
       + '<div style="font-size:13px;color:#e0c870;line-height:1.6;">'+reasonText+'</div>'
+      + (missingConds.length ? '<div style="font-size:11px;color:var(--gold);font-weight:700;margin-top:8px;margin-bottom:4px;">📋 不足条件:</div>'
+        + missingConds.map(function(c){ return '<div style="font-size:12px;color:#e0c870;padding:2px 0;">・'+c+'</div>'; }).join('')
+        : '')
       + '</div>';
   } else if(action === 'WAIT' && reasonText){
     html += '<div class="analysis-card" style="border:1px solid var(--gold);margin-bottom:12px;">'

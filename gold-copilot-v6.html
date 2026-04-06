@@ -933,19 +933,21 @@ async function fetchHigherTfCandles(higherTf) {
 // ── 上位足コンテキスト構築 ──
 function buildHigherTfContext(candles, higherTf) {
   if(!candles || !candles.length) return null;
-  var dow = calcDowTheory(candles);
-  var swingHighs = (dow.swingHighs || []).slice(-10);
-  var swingLows  = (dow.swingLows  || []).slice(-10);
+  // 末尾50本のみからスイングを検出
+  var recentCandles = candles.slice(-50);
+  var dow = calcDowTheory(recentCandles);
+  var swingHighs = (dow.swingHighs || []).slice(-5);
+  var swingLows  = (dow.swingLows  || []).slice(-5);
 
-  // スイング高値・安値から候補ラインを収集（直近10点ずつ）
-  var candidates = (dow.recentHighs || []).slice(-10).map(function(s){return s.price;})
-    .concat((dow.recentLows || []).slice(-10).map(function(s){return s.price;}));
+  // 候補ラインを直近5点ずつ収集
+  var candidates = (dow.recentHighs || []).slice(-5).map(function(s){return s.price;})
+    .concat((dow.recentLows || []).slice(-5).map(function(s){return s.price;}));
 
-  console.log('[higherTf SR] 統合前候補数:', candidates.length);
+  console.log('[higherTf SR] candidates:', candidates);
 
-  // 近接ゾーン統合: ATR×0.3以内を同一ゾーンとみなし平均値を代表価格にする
+  // 近接ゾーン統合: ATR×0.5以内を同一ゾーンとみなし平均値を代表価格にする
   var atr = dow.atr || 1;
-  var zoneThr = atr * 0.3;
+  var zoneThr = atr * 0.5;
   var sorted = candidates.slice().sort(function(a,b){return a-b;});
   var zones = [];
   sorted.forEach(function(p) {
@@ -960,11 +962,10 @@ function buildHigherTfContext(candles, higherTf) {
     return +(z.reduce(function(s,v){return s+v;}, 0) / z.length).toFixed(2);
   });
 
-  console.log('[higherTf SR] 統合後ライン数:', sr_lines.length);
-
   var price = mt5Bid || chartLastClose;
-  var supports    = sr_lines.filter(function(p){return p <= price;}).sort(function(a,b){return b-a;});
-  var resistances = sr_lines.filter(function(p){return p >= price;}).sort(function(a,b){return a-b;});
+  var maxDist = atr * 5;
+  var supports    = sr_lines.filter(function(p){return p <= price && (price - p) <= maxDist;}).sort(function(a,b){return b-a;});
+  var resistances = sr_lines.filter(function(p){return p >= price && (p - price) <= maxDist;}).sort(function(a,b){return a-b;});
 
   // 現在価格に近い順にソート
   sr_lines.sort(function(a,b){return Math.abs(a-price) - Math.abs(b-price);});

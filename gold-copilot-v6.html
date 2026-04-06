@@ -2300,6 +2300,16 @@ function showAiLogSummary(){
   var conf = {1:0,2:0,3:0,4:0,5:0};
   // WATCH遷移
   var transitioned = 0, notTransitioned = 0;
+  // 上位足トレンド別件数
+  var trendCounts = {UP:0,DOWN:0,BULLISH_BIAS:0,BEARISH_BIAS:0,RANGE:0};
+  // トレンド×actionクロス集計
+  var trendAction = {
+    UP:           {BUY:0,WATCH_BUY:0,WAIT:0},
+    DOWN:         {SELL:0,WATCH_SELL:0,WAIT:0},
+    BULLISH_BIAS: {BUY:0,WATCH_BUY:0,WAIT:0},
+    BEARISH_BIAS: {SELL:0,WATCH_SELL:0,WAIT:0},
+    RANGE:        {WAIT:0}
+  };
   log.forEach(function(e){
     var a = e.action || 'WAIT';
     if(actions[a] !== undefined) actions[a]++; else actions[a] = 1;
@@ -2313,6 +2323,15 @@ function showAiLogSummary(){
     if(e.confidence >= 1 && e.confidence <= 5) conf[e.confidence]++;
     if(a === 'WATCH_BUY' || a === 'WATCH_SELL'){
       if(e.transition_to) transitioned++; else notTransitioned++;
+    }
+    // 上位足トレンド集計
+    var tk = e.trend_higher_key || null;
+    if(tk && trendCounts[tk] !== undefined) trendCounts[tk]++;
+    // クロス集計
+    if(tk && trendAction[tk]){
+      var bucket = trendAction[tk];
+      if(bucket[a] !== undefined) bucket[a]++;
+      else if(bucket['WAIT'] !== undefined) bucket['WAIT']++;
     }
   });
   // 直近BUY/SELL 最新3件（新しい順）
@@ -2383,6 +2402,32 @@ function showAiLogSummary(){
       h += '</div>';
     });
   }
+  h += '</div>';
+
+  // 上位足トレンド別件数
+  h += '<div class="log-sum-section">';
+  h += '<div class="log-sum-head">■ 上位足トレンド別件数</div>';
+  [['UP','var(--green)'],['DOWN','var(--red)'],['BULLISH_BIAS','#66cc88'],['BEARISH_BIAS','#ff8099'],['RANGE','var(--gold)']].forEach(function(pair){
+    var k=pair[0], col=pair[1];
+    h += '<div class="log-sum-row"><span style="color:'+col+'">'+k+'</span><span>'+trendCounts[k]+'件</span></div>';
+  });
+  h += '</div>';
+
+  // トレンド×actionクロス集計
+  h += '<div class="log-sum-section">';
+  h += '<div class="log-sum-head">■ トレンド × action クロス集計</div>';
+  [
+    ['BULLISH_BIAS','#66cc88',['BUY','WATCH_BUY','WAIT']],
+    ['BEARISH_BIAS','#ff8099',['SELL','WATCH_SELL','WAIT']],
+    ['UP','var(--green)',['BUY','WATCH_BUY','WAIT']],
+    ['DOWN','var(--red)',['SELL','WATCH_SELL','WAIT']],
+    ['RANGE','var(--gold)',['WAIT']]
+  ].forEach(function(row){
+    var tk=row[0], col=row[1], keys=row[2];
+    var bucket = trendAction[tk];
+    var parts = keys.map(function(k){ return k+': '+bucket[k]+'件'; }).join(' / ');
+    h += '<div class="log-sum-row"><span style="color:'+col+';min-width:120px;display:inline-block;">'+tk+'</span><span style="color:var(--muted);font-size:11px;">→ '+parts+'</span></div>';
+  });
   h += '</div>';
 
   // WATCH→遷移
@@ -2772,6 +2817,7 @@ async function analyzeWithClaude(){
       wait_reason_category: r.wait_reason_category || null,
       confidence: r.confidence,
       trend_higher: r.trend_higher,
+      trend_higher_key: (window._lastAiInput && window._lastAiInput.higher_tf_dow) ? window._lastAiInput.higher_tf_dow.trend : null,
       trend_current: r.trend_current,
       transition: r.transition,
       near_sr_line: r.near_sr_line,

@@ -2858,6 +2858,32 @@ async function analyzeWithClaude(){
         if(r.action === 'WATCH_BUY'  && _csr.near_support    === false) missing.push('near_support');
         if(r.action === 'WATCH_SELL' && _csr.near_resistance === false) missing.push('near_resistance');
         return missing.length ? missing : null;
+      })(),
+      missing_conditions_detail: (function(){
+        if(r.action !== 'WATCH_BUY' && r.action !== 'WATCH_SELL') return null;
+        var _inp = window._lastAiInput || {};
+        var _csr = _inp.current_tf_sr_context || {};
+        var _hsr = _inp.higher_tf_sr_context || {};
+        var isBuy = r.action === 'WATCH_BUY';
+        var tp = isBuy ? _inp.candidate_tp_buy  : _inp.candidate_tp_sell;
+        var sl = isBuy ? _inp.candidate_stop_loss_buy : _inp.candidate_stop_loss_sell;
+        var _price = _inp.current_price || 0;
+        var estRR = null;
+        if(tp != null && sl != null && _price > 0){
+          var reward = isBuy ? (tp - _price) : (_price - tp);
+          var risk   = isBuy ? (_price - sl) : (sl - _price);
+          if(risk > 0) estRR = parseFloat((reward / risk).toFixed(2));
+        }
+        return {
+          near_support:          _csr.near_support,
+          distance_to_support:   _csr.distance_to_support    != null ? _csr.distance_to_support    : null,
+          near_resistance:       _csr.near_resistance,
+          distance_to_resistance:_csr.distance_to_resistance != null ? _csr.distance_to_resistance : null,
+          transition:            r.transition,
+          near_resistance_higher:_hsr.near_resistance === true,
+          near_support_higher:   _hsr.near_support   === true,
+          estimated_rr:          estRR
+        };
       })()
     });
     window._aiLog = aiAnalysisLog;
@@ -3046,18 +3072,77 @@ function renderAI(r){
 
   // ── 修正5: WAIT時のreason 強調 / WATCH監視候補ボックス / エントリー根拠 ──
   if(isWatch && reasonText){
-    var missingConds = [];
     var inp = window._lastAiInput || {};
     var curSr = inp.current_tf_sr_context || {};
-    if(r.transition === 'NONE') missingConds.push('転換シグナル待ち');
-    if(isWatchBuy  && curSr.near_support    === false) missingConds.push('サポート接近待ち');
-    if(isWatchSell && curSr.near_resistance === false) missingConds.push('レジスタンス接近待ち');
+    var higherSr = inp.higher_tf_sr_context || {};
+    var watchSide = isWatchBuy ? 'BUY' : 'SELL';
+
+    // 不足条件詳細計算
+    var condItems = [];
+    if(isWatchBuy){
+      // 1. near_support
+      if(curSr.near_support === false){
+        var distS = curSr.distance_to_support != null ? '（あと ' + curSr.distance_to_support.toFixed(2) + ' ドル）' : '';
+        condItems.push('❌ サポート接近待ち' + distS);
+      } else { condItems.push('✅ サポート近接'); }
+      // 2. transition
+      if(r.transition === 'NONE'){
+        var curTrendTxt = (inp.current_tf_dow && inp.current_tf_dow.trend_label) ? inp.current_tf_dow.trend_label : (r.trend_current || '不明');
+        condItems.push('❌ 転換シグナル待ち（現在: ' + curTrendTxt + '）');
+      } else { condItems.push('✅ 転換確認済み（' + r.transition + '）'); }
+      // 3. 上位足障害物
+      if(higherSr.near_resistance === true){
+        condItems.push('⚠️ 上位足レジスタンス近接（障害あり）');
+      } else { condItems.push('✅ 上位足障害物なし'); }
+      // 4. RR見込み
+      var tp = inp.candidate_tp_buy;
+      var sl = inp.candidate_stop_loss_buy;
+      var curPrice = inp.current_price || 0;
+      if(tp != null && sl != null && curPrice > 0){
+        var reward = tp - curPrice;
+        var risk   = curPrice - sl;
+        if(risk > 0){
+          var estRR = reward / risk;
+          if(estRR >= 1.5){ condItems.push('✅ RR良好（推定 1:' + estRR.toFixed(1) + '）'); }
+          else             { condItems.push('⚠️ RR不足（推定 1:' + estRR.toFixed(1) + '）'); }
+        } else { condItems.push('⚠️ TP/SL計算不能'); }
+      } else { condItems.push('⚠️ TP/SL未確定'); }
+    } else {
+      // WATCH_SELL
+      // 1. near_resistance
+      if(curSr.near_resistance === false){
+        var distR = curSr.distance_to_resistance != null ? '（あと ' + curSr.distance_to_resistance.toFixed(2) + ' ドル）' : '';
+        condItems.push('❌ レジスタンス接近待ち' + distR);
+      } else { condItems.push('✅ レジスタンス近接'); }
+      // 2. transition
+      if(r.transition === 'NONE'){
+        var curTrendTxtS = (inp.current_tf_dow && inp.current_tf_dow.trend_label) ? inp.current_tf_dow.trend_label : (r.trend_current || '不明');
+        condItems.push('❌ 転換シグナル待ち（現在: ' + curTrendTxtS + '）');
+      } else { condItems.push('✅ 転換確認済み（' + r.transition + '）'); }
+      // 3. 上位足障害物
+      if(higherSr.near_support === true){
+        condItems.push('⚠️ 上位足サポート近接（障害あり）');
+      } else { condItems.push('✅ 上位足障害物なし'); }
+      // 4. RR見込み
+      var tpS = inp.candidate_tp_sell;
+      var slS = inp.candidate_stop_loss_sell;
+      var curPriceS = inp.current_price || 0;
+      if(tpS != null && slS != null && curPriceS > 0){
+        var rewardS = curPriceS - tpS;
+        var riskS   = slS - curPriceS;
+        if(riskS > 0){
+          var estRRS = rewardS / riskS;
+          if(estRRS >= 1.5){ condItems.push('✅ RR良好（推定 1:' + estRRS.toFixed(1) + '）'); }
+          else              { condItems.push('⚠️ RR不足（推定 1:' + estRRS.toFixed(1) + '）'); }
+        } else { condItems.push('⚠️ TP/SL計算不能'); }
+      } else { condItems.push('⚠️ TP/SL未確定'); }
+    }
+
     html += '<div class="analysis-card" style="border:1px solid var(--gold);margin-bottom:12px;">'
       + '<div style="font-size:11px;color:var(--gold);font-weight:700;margin-bottom:6px;">📋 監視条件:</div>'
       + '<div style="font-size:13px;color:#e0c870;line-height:1.6;">'+reasonText+'</div>'
-      + (missingConds.length ? '<div style="font-size:11px;color:var(--gold);font-weight:700;margin-top:8px;margin-bottom:4px;">📋 不足条件:</div>'
-        + missingConds.map(function(c){ return '<div style="font-size:12px;color:#e0c870;padding:2px 0;">・'+c+'</div>'; }).join('')
-        : '')
+      + '<div style="font-size:11px;color:var(--gold);font-weight:700;margin-top:8px;margin-bottom:4px;">📋 ' + watchSide + 'までの不足条件:</div>'
+      + condItems.map(function(c){ return '<div style="font-size:12px;color:#e0c870;padding:2px 0;">・'+c+'</div>'; }).join('')
       + '</div>';
   } else if(action === 'WAIT' && reasonText){
     html += '<div class="analysis-card" style="border:1px solid var(--gold);margin-bottom:12px;">'

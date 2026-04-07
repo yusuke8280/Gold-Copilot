@@ -2548,6 +2548,9 @@ function openPosModal(){
 
     var adviceBg = isProfit ? 'rgba(0,217,126,0.08)' : 'rgba(255,77,106,0.08)';
     html += '<div class="advice-box" style="background:'+adviceBg+';border:1px solid '+sigColor+';color:'+sigColor+'">'+advice+'</div>';
+    html += '<div style="display:flex;justify-content:flex-end;margin-top:8px;">';
+    html += '<button onclick="closeSinglePosition(\''+p.id+'\',\''+((p.volume||0.01))+'\')" style="background:#b71c1c;color:#fff;border:none;border-radius:6px;padding:6px 16px;font-size:12px;font-weight:700;cursor:pointer;letter-spacing:1px;">決済</button>';
+    html += '</div>';
     html += '</div>';
   });
 
@@ -3504,6 +3507,41 @@ async function closeAllPositions(){
   } finally {
     _orderInProgress = false;
     if(_closeBtn){ _closeBtn.disabled = false; _closeBtn.textContent = '全決済'; }
+  }
+}
+
+async function closeSinglePosition(positionId, lot){
+  if(_orderInProgress) return;
+  if(!MT5_TOKEN || !MT5_ACCOUNT_ID){
+    showTrdToast('MT5未接続です', 'var(--red)'); return;
+  }
+  if(!confirm('このポジションを決済しますか？（ロット: ' + lot + ' lot）')) return;
+  _orderInProgress = true;
+  try {
+    var res = await fetch(
+      'https://mt-client-api-v1.london.agiliumtrade.ai/users/current/accounts/' + MT5_ACCOUNT_ID + '/trade',
+      {
+        method: 'POST',
+        headers: {'auth-token': MT5_TOKEN, 'Content-Type': 'application/json'},
+        body: JSON.stringify({actionType: 'POSITION_CLOSE_ID', positionId: positionId})
+      }
+    );
+    if(res.ok){
+      var data = await res.json();
+      if(data.numericCode === 10009 || data.stringCode === 'TRADE_RETCODE_DONE'){
+        showTrdToast('決済完了', 'var(--green)');
+        closePosModal();
+        setTimeout(fetchMT5Data, 500);
+      } else {
+        showTrdToast('決済失敗: ' + (data.stringCode || data.numericCode || 'ERROR'), 'var(--red)');
+      }
+    } else {
+      showTrdToast('決済失敗 (HTTP ' + res.status + ')', 'var(--red)');
+    }
+  } catch(e){
+    showTrdToast('決済エラー: ' + e.message, 'var(--red)');
+  } finally {
+    _orderInProgress = false;
   }
 }
 

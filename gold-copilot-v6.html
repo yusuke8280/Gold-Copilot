@@ -2304,6 +2304,47 @@ function openAI(){
   document.getElementById('aiContent').style.display='none';
 }
 function closeAI(){ document.getElementById('aiOverlay').classList.remove('show'); }
+function _renderLogEntries(entries){
+  if(!entries || !entries.length) return '<div style="color:var(--muted);font-size:12px;padding:4px 0;">データなし</div>';
+  var out = '';
+  entries.slice(-5).reverse().forEach(function(e){
+    var isBuy  = e.action === 'BUY';
+    var isSell = e.action === 'SELL';
+    var isWB   = e.action === 'WATCH_BUY';
+    var isWS   = e.action === 'WATCH_SELL';
+    var col = (isBuy||isWB) ? 'var(--green)' : (isSell||isWS) ? 'var(--red)' : 'var(--gold)';
+    var timeStr = e.timestamp
+      ? new Date(e.timestamp).toLocaleString('ja-JP',{timeZone:'Asia/Tokyo',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})
+      : '---';
+    var tp = e.take_profit  != null ? (+e.take_profit ).toFixed(2) : '---';
+    var sl = e.stop_loss    != null ? (+e.stop_loss   ).toFixed(2) : '---';
+    var rr = e.risk_reward  != null ? (+e.risk_reward ).toFixed(2) : '---';
+    out += '<div class="log-sum-trade" style="border-left:3px solid '+col+'">';
+    out += '<div style="display:flex;justify-content:space-between;margin-bottom:4px;">';
+    out += '<span style="color:'+col+';font-weight:700;">'+e.action+'</span>';
+    out += '<span style="color:var(--muted);font-size:11px;">'+timeStr+' / '+(e.tf||'---')+'</span>';
+    out += '</div>';
+    out += '<div style="font-size:11px;color:var(--muted);">confidence:'+(e.confidence||'?')+'&nbsp;&nbsp;TP:'+tp+'&nbsp;&nbsp;SL:'+sl+'&nbsp;&nbsp;RR:'+rr+'</div>';
+    out += '</div>';
+  });
+  return out;
+}
+function filterLogSummary(type){
+  var log = aiAnalysisLog;
+  var filtered;
+  if     (type === 'h4')        filtered = log.filter(function(e){ return e.tf === 'H4'; });
+  else if(type === 'watch_buy') filtered = log.filter(function(e){ return e.action === 'WATCH_BUY'; });
+  else if(type === 'buy_sell')  filtered = log.filter(function(e){ return e.action === 'BUY' || e.action === 'SELL'; });
+  else if(type === 'new')       filtered = log.filter(function(e){ return !!e.trend_higher_key; });
+  else                          filtered = log;
+  var el = document.getElementById('logSumEntries');
+  if(el) el.innerHTML = _renderLogEntries(filtered);
+  ['all','h4','watch_buy','buy_sell','new'].forEach(function(t){
+    var btn = document.getElementById('logFilterBtn_'+t);
+    if(btn) btn.style.background = (t === type) ? 'var(--gold)' : '#2a3548';
+    if(btn) btn.style.color      = (t === type) ? '#1a1a2e'     : '#8aaccc';
+  });
+}
 function showAiLogSummary(){
   var log = aiAnalysisLog;
   var newLogs = log.filter(function(e){ return e.trend_higher_key; });
@@ -2313,6 +2354,8 @@ function showAiLogSummary(){
   var actions = {BUY:0,SELL:0,WATCH_BUY:0,WATCH_SELL:0,WAIT:0};
   // WAIT理由
   var waitReasons = {'上位足逆行':0,'障害ライン近接':0,'転換未発生':0,'ライン未接近':0,'RR不足':0};
+  // 上位足逆行の内訳
+  var higherTrendBreakdown = {DOWN:0,RANGE:0,BEARISH_BIAS:0,BULLISH_BIAS:0,other:0};
   // WATCH内訳（wait_reason_category）
   var watchReasons = {'転換未発生':0,'ライン未接近':0,'その他':0};
   // confidence分布
@@ -2336,6 +2379,10 @@ function showAiLogSummary(){
     if(actions[a] !== undefined) actions[a]++; else actions[a] = 1;
     if(a === 'WAIT' && e.wait_reason_category && waitReasons[e.wait_reason_category] !== undefined){
       waitReasons[e.wait_reason_category]++;
+      if(e.wait_reason_category === '上位足逆行' && e.higher_trend_detail){
+        if(higherTrendBreakdown[e.higher_trend_detail] !== undefined) higherTrendBreakdown[e.higher_trend_detail]++;
+        else higherTrendBreakdown.other++;
+      }
     }
     if((a === 'WATCH_BUY' || a === 'WATCH_SELL') && e.wait_reason_category){
       if(watchReasons[e.wait_reason_category] !== undefined) watchReasons[e.wait_reason_category]++;
@@ -2360,8 +2407,6 @@ function showAiLogSummary(){
       else if(bucket['WAIT'] !== undefined) bucket['WAIT']++;
     }
   });
-  // 直近BUY/SELL 最新3件（新しい順）
-  var buySellEntries = log.filter(function(e){ return e.action === 'BUY' || e.action === 'SELL'; }).slice(-3).reverse();
 
   var h = '';
   h += '<div class="modal-title">AI LOG SUMMARY</div>';
@@ -2394,6 +2439,14 @@ function showAiLogSummary(){
   h += '<div class="log-sum-head">■ WAIT理由内訳</div>';
   ['上位足逆行','障害ライン近接','転換未発生','ライン未接近','RR不足'].forEach(function(k){
     h += '<div class="log-sum-row"><span>' + k + '</span><span>' + waitReasons[k] + '件</span></div>';
+    if(k === '上位足逆行'){
+      [['DOWN','var(--red)'],['BEARISH_BIAS','#ff8099'],['RANGE','var(--gold)'],['BULLISH_BIAS','#66cc88']].forEach(function(pair){
+        var tk=pair[0], col=pair[1];
+        if(higherTrendBreakdown[tk] > 0){
+          h += '<div class="log-sum-row" style="padding-left:16px;"><span style="color:'+col+';font-size:11px;">└ '+tk+'で逆行</span><span style="font-size:11px;">'+higherTrendBreakdown[tk]+'件</span></div>';
+        }
+      });
+    }
   });
   h += '</div>';
 
@@ -2407,29 +2460,32 @@ function showAiLogSummary(){
   h += '</div>';
   h += '</div>';
 
-  // 直近BUY/SELL
+  // 直近事例（フィルタ対応）
+  var initEntries = log.filter(function(e){ return e.action === 'BUY' || e.action === 'SELL'; });
   h += '<div class="log-sum-section">';
-  h += '<div class="log-sum-head">■ 直近BUY/SELL事例（最新3件）</div>';
-  if(!buySellEntries.length){
-    h += '<div style="color:var(--muted);font-size:12px;padding:4px 0;">データなし</div>';
-  } else {
-    buySellEntries.forEach(function(e){
-      var isBuy = e.action === 'BUY';
-      var timeStr = e.timestamp
-        ? new Date(e.timestamp).toLocaleString('ja-JP',{timeZone:'Asia/Tokyo',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})
-        : '---';
-      var tp = e.take_profit != null ? (+e.take_profit).toFixed(2) : '---';
-      var sl = e.stop_loss  != null ? (+e.stop_loss ).toFixed(2) : '---';
-      var rr = e.risk_reward != null ? (+e.risk_reward).toFixed(2) : '---';
-      h += '<div class="log-sum-trade" style="border-left:3px solid ' + (isBuy ? 'var(--green)' : 'var(--red)') + '">';
-      h += '<div style="display:flex;justify-content:space-between;margin-bottom:4px;">';
-      h += '<span style="color:' + (isBuy ? 'var(--green)' : 'var(--red)') + ';font-weight:700;">' + e.action + '</span>';
-      h += '<span style="color:var(--muted);font-size:11px;">' + timeStr + ' / ' + (e.tf || '---') + '</span>';
-      h += '</div>';
-      h += '<div style="font-size:11px;color:var(--muted);">confidence:' + (e.confidence || '?') + '&nbsp;&nbsp;TP:' + tp + '&nbsp;&nbsp;SL:' + sl + '&nbsp;&nbsp;RR:' + rr + '</div>';
-      h += '</div>';
-    });
-  }
+  h += '<div class="log-sum-head">■ 直近事例（最新5件）</div>';
+  h += '<div id="logSumEntries">' + _renderLogEntries(initEntries) + '</div>';
+  h += '</div>';
+
+  // フィルタボタン
+  h += '<div class="log-sum-section">';
+  h += '<div class="log-sum-head">■ フィルタ</div>';
+  h += '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px;">';
+  var filterDefs = [
+    ['all',       '全て'],
+    ['buy_sell',  'BUY/SELLのみ'],
+    ['watch_buy', 'WATCH_BUYのみ'],
+    ['h4',        'H4のみ'],
+    ['new',       '新フォーマットのみ']
+  ];
+  filterDefs.forEach(function(fd){
+    var isActive = fd[0] === 'buy_sell';
+    h += '<button id="logFilterBtn_'+fd[0]+'" onclick="filterLogSummary(\''+fd[0]+'\')" '
+      + 'style="background:'+(isActive?'var(--gold)':'#2a3548')+';color:'+(isActive?'#1a1a2e':'#8aaccc')+';'
+      + 'border:1px solid #3a4d66;border-radius:6px;padding:5px 10px;font-size:11px;cursor:pointer;font-family:inherit;">'
+      + fd[1] + '</button>';
+  });
+  h += '</div>';
   h += '</div>';
 
   // 上位足トレンド別件数
@@ -2864,6 +2920,10 @@ async function analyzeWithClaude(){
       stop_loss: r.stop_loss,
       take_profit: r.take_profit,
       risk_reward: r.risk_reward,
+      higher_trend_detail: (function(){
+        if(r.action !== 'WAIT' || r.wait_reason_category !== '上位足逆行') return null;
+        return (window._lastAiInput && window._lastAiInput.higher_tf_dow) ? window._lastAiInput.higher_tf_dow.trend : null;
+      })(),
       watch_missing_conditions: (function(){
         if(r.action !== 'WATCH_BUY' && r.action !== 'WATCH_SELL') return null;
         var missing = [];

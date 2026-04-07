@@ -736,6 +736,7 @@ var _reconnectTimer = null;        // 自動再接続タイマー
 var _reconnectCount = 0;           // 再接続試行回数
 var _fetchFailCount = 0;           // fetchMT5Data 連続失敗回数
 var _orderInProgress = false;      // 発注処理中フラグ（二重送信防止）
+var _lastWatchAction = null;       // 直前のWATCH状態を保存（失効理由記録用）
 var _lastToastMessage = '';
 var _lastToastTime = 0;
 
@@ -2318,6 +2319,8 @@ function showAiLogSummary(){
   var conf = {1:0,2:0,3:0,4:0,5:0};
   // WATCH遷移
   var transitioned = 0, notTransitioned = 0;
+  // WATCH失効理由
+  var watchExpired = {promoted:0, expired_without_touch:0, expired_after_breakdown:0, expired_after_sideways:0};
   // 上位足トレンド別件数（newLogsのみ）
   var trendCounts = {UP:0,DOWN:0,BULLISH_BIAS:0,BEARISH_BIAS:0,RANGE:0};
   // トレンド×actionクロス集計（newLogsのみ）
@@ -2341,6 +2344,9 @@ function showAiLogSummary(){
     if(e.confidence >= 1 && e.confidence <= 5) conf[e.confidence]++;
     if(a === 'WATCH_BUY' || a === 'WATCH_SELL'){
       if(e.transition_to) transitioned++; else notTransitioned++;
+      if(e.watch_expired_reason && watchExpired[e.watch_expired_reason] !== undefined){
+        watchExpired[e.watch_expired_reason]++;
+      }
     }
   });
   // 新フォーマットのみクロス集計
@@ -2457,6 +2463,15 @@ function showAiLogSummary(){
   h += '<div class="log-sum-head">■ WATCH→BUY/SELL遷移</div>';
   h += '<div class="log-sum-row"><span>遷移あり</span><span style="color:var(--green)">' + transitioned + '件</span></div>';
   h += '<div class="log-sum-row"><span>遷移なし（WATCH止まり）</span><span style="color:var(--muted)">' + notTransitioned + '件</span></div>';
+  h += '</div>';
+
+  // WATCH失効理由
+  h += '<div class="log-sum-section">';
+  h += '<div class="log-sum-head">■ WATCH失効理由</div>';
+  h += '<div class="log-sum-row"><span>昇格（BUY/SELL）</span><span style="color:var(--green)">' + watchExpired.promoted + '件</span></div>';
+  h += '<div class="log-sum-row"><span>未接近で失効</span><span style="color:var(--muted)">' + watchExpired.expired_without_touch + '件</span></div>';
+  h += '<div class="log-sum-row"><span>崩れで失効</span><span style="color:var(--red)">' + watchExpired.expired_after_breakdown + '件</span></div>';
+  h += '<div class="log-sum-row"><span>横ばいで失効</span><span style="color:var(--muted)">' + watchExpired.expired_after_sideways + '件</span></div>';
   h += '</div>';
 
   document.getElementById('logSummaryContent').innerHTML = h;
@@ -2909,6 +2924,32 @@ async function analyzeWithClaude(){
       }
     }
 
+    // WATCH失効理由記録
+    if(_lastWatchAction &&
+       (_lastWatchAction === 'WATCH_BUY' || _lastWatchAction === 'WATCH_SELL') &&
+       r.action !== _lastWatchAction){
+      var expiredReason;
+      if(r.action === 'BUY' || r.action === 'SELL'){
+        expiredReason = 'promoted';
+      } else if(r.trend_higher === 'DOWN' || r.trend_higher === 'RANGE'){
+        expiredReason = 'expired_after_breakdown';
+      } else if(r.action === 'WAIT' && r.wait_reason_category === 'ライン未接近'){
+        expiredReason = 'expired_without_touch';
+      } else {
+        expiredReason = 'expired_after_sideways';
+      }
+      console.log('[WATCH失効]', _lastWatchAction, '→', r.action, '理由:', expiredReason);
+      var lastWatchLog = aiAnalysisLog.slice().reverse().find(function(e){
+        return e.action === _lastWatchAction;
+      });
+      if(lastWatchLog){
+        lastWatchLog.watch_expired_reason = expiredReason;
+        lastWatchLog.watch_expired_to = r.action;
+        localStorage.setItem('gc_ai_log', JSON.stringify(aiAnalysisLog.slice(-200)));
+      }
+    }
+    _lastWatchAction = (r.action === 'WATCH_BUY' || r.action === 'WATCH_SELL') ? r.action : null;
+
     r.atr = atr;
     r._higherTf = higherTf;
     r._currentTf = currentTf;
@@ -2968,8 +3009,29 @@ function renderAI(r){
   // ── 修正1: actionカード（大きく目立たせる） ──
   var actionBg    = isBuy?'#00a86b':isSell?'#d32f2f':isWatchBuy?'#7B5E00':isWatchSell?'#7B5E00':'#555';
   var actionLabel = isBuy?'BUY':isSell?'SELL':isWatchBuy?'👁 WATCH BUY':isWatchSell?'👁 WATCH SELL':'WAIT';
+  var watchSubtitle = '';
+  if(isWatch){
+    var _inp2 = window._lastAiInput || {};
+    var _csr2 = _inp2.current_tf_sr_context || {};
+    if(isWatchBuy){
+      if(_csr2.near_support === false && _csr2.distance_to_support != null){
+        watchSubtitle = 'BUYまであと ' + _csr2.distance_to_support.toFixed(2) + ' ドル';
+      } else if(_csr2.near_support === true){
+        watchSubtitle = '📍 サポート到達済み - 転換待ち';
+      }
+    } else {
+      if(_csr2.near_resistance === false && _csr2.distance_to_resistance != null){
+        watchSubtitle = 'SELLまであと ' + _csr2.distance_to_resistance.toFixed(2) + ' ドル';
+      } else if(_csr2.near_resistance === true){
+        watchSubtitle = '📍 レジスタンス到達済み - 転換待ち';
+      }
+    }
+  }
   html += '<div style="background:'+actionBg+';border-radius:12px;padding:16px 20px;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;">'
-    + '<span style="color:#fff;font-size:32px;font-weight:800;letter-spacing:2px;">'+actionLabel+'</span>';
+    + '<div>'
+    + '<span style="color:#fff;font-size:32px;font-weight:800;letter-spacing:2px;">'+actionLabel+'</span>'
+    + (watchSubtitle ? '<div style="color:rgba(255,255,255,0.85);font-size:12px;margin-top:4px;font-weight:600;">'+watchSubtitle+'</div>' : '')
+    + '</div>';
 
   // 修正4: confidence バー（actionカード右側）
   if(confidence){

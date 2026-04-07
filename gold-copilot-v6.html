@@ -970,8 +970,24 @@ function buildHigherTfContext(candles, higherTf) {
   // 現在価格に近い順にソート
   sr_lines.sort(function(a,b){return Math.abs(a-price) - Math.abs(b-price);});
 
-  console.log('[higherTf SR] nearest_support:', supports[0]||null, 'distance:', supports[0]!=null ? +(price-supports[0]).toFixed(2) : null);
-  console.log('[higherTf SR] nearest_resistance:', resistances[0]||null, 'distance:', resistances[0]!=null ? +(resistances[0]-price).toFixed(2) : null);
+  var nearSupport = false;
+  var distToSupport = null;
+  if(supports.length > 0){
+    distToSupport = price - supports[0];
+    nearSupport = distToSupport <= atr * (nearLineAtrMultiplier[higherTf] || 0.18);
+  }
+
+  var nearResistance = false;
+  var distToResistance = null;
+  if(resistances.length > 0){
+    distToResistance = resistances[0] - price;
+    nearResistance = distToResistance <= atr * (nearLineAtrMultiplier[higherTf] || 0.18);
+  }
+
+  console.log('[higherTf SR] supports:', supports, 'resistances:', resistances);
+  console.log('[higherTf SR] nearSupport:', nearSupport, 'distToSupport:', distToSupport);
+  console.log('[higherTf SR] nearest_support:', supports[0]||null, 'distance:', distToSupport);
+  console.log('[higherTf SR] nearest_resistance:', resistances[0]||null, 'distance:', distToResistance);
 
   return {
     dow: dow,
@@ -981,12 +997,12 @@ function buildHigherTfContext(candles, higherTf) {
     },
     sr_lines: sr_lines,
     sr_context: {
-      nearest_support:        supports[0]    || null,
-      nearest_resistance:     resistances[0] || null,
-      distance_to_support:    supports[0]    != null ? +(price - supports[0]).toFixed(2)    : null,
-      distance_to_resistance: resistances[0] != null ? +(resistances[0] - price).toFixed(2) : null,
-      near_support:    supports[0]    != null ? (price - supports[0])    <= atr * (nearLineAtrMultiplier[higherTf]||0.18) : false,
-      near_resistance: resistances[0] != null ? (resistances[0] - price) <= atr * (nearLineAtrMultiplier[higherTf]||0.18) : false
+      nearest_support:        supports[0]        || null,
+      nearest_resistance:     resistances[0]     || null,
+      distance_to_support:    distToSupport    != null ? +distToSupport.toFixed(2)    : null,
+      distance_to_resistance: distToResistance != null ? +distToResistance.toFixed(2) : null,
+      near_support:    nearSupport,
+      near_resistance: nearResistance
     }
   };
 }

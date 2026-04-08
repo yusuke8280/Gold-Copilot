@@ -628,6 +628,7 @@ canvas{display:block;width:100% !important;}
              padding:4px 6px;color:var(--text);font-family:'Space Mono',monospace;font-size:11px;outline:none;">
   </div>
   <div class="margin-info" id="marginInfo">必要証拠金: --- | 利用可能: ---</div>
+  <div id="aiTradeIndicator" style="text-align:center;font-size:10px;color:var(--muted);height:14px;margin-bottom:3px;">❓ AI未分析</div>
   <div class="trade-btn-row">
     <button class="trade-btn t-buy" id="trdBuyBtn">BUY<br>
       <span id="trdAskPrice" style="font-size:14px;letter-spacing:0;">---.--</span>
@@ -2568,6 +2569,23 @@ function showAiLogSummary(){
   h += '<div class="log-sum-row"><span>横ばいで失効</span><span style="color:var(--muted)">' + watchExpired.expired_after_sideways + '件</span></div>';
   h += '</div>';
 
+  // 手動エントリー記録
+  var _overrideLog = window._manualOverrideLog || [];
+  h += '<div class="log-sum-section">';
+  h += '<div class="log-sum-head">■ 手動エントリー記録</div>';
+  h += '<div class="log-sum-row"><span>AI WAIT中に手動エントリー</span><span style="color:var(--gold);">' + _overrideLog.length + '件</span></div>';
+  if(_overrideLog.length > 0){
+    _overrideLog.slice(-3).reverse().forEach(function(e){
+      var t = new Date(e.timestamp).toLocaleString('ja-JP',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});
+      h += '<div class="log-sum-row" style="padding-left:12px;font-size:11px;"><span style="color:var(--muted);">'
+        + t + ' ' + (e.manual_side||'').toUpperCase()
+        + ' / 上位足:' + (e.trend_higher||'?')
+        + ' / 理由:' + (e.wait_reason||'?')
+        + '</span></div>';
+    });
+  }
+  h += '</div>';
+
   document.getElementById('logSummaryContent').innerHTML = h;
   document.getElementById('logSummaryModal').classList.add('show');
 }
@@ -2816,6 +2834,8 @@ function runFallbackAnalysis(){
     warning:'ローカル分析。必ず自己判断でトレードしてください。',
     ma20:ma20val,atr:atr};
   analysisResult=r;
+  window._lastAiOutput = r;
+  updateAiTradeIndicator();
   overlayLines=r.sr.filter(function(l){return l.price>1000&&l.price<100000;}).map(function(s){
     var cm={R1:'#ff4d6a',R2:'#ff8099',S1:'#00d97e',S2:'#66ffbb'};
     return {price:s.price,color:cm[s.label]||'#f0b429',label:s.label,width:1.5,dash:[4,3]};
@@ -2950,6 +2970,7 @@ async function analyzeWithClaude(){
     if(!jsonMatch) throw new Error('JSON parse error');
     var r = JSON.parse(jsonMatch[0]);
     window._lastAiOutput = r;
+    updateAiTradeIndicator();
     aiAnalysisLog.push({
       timestamp: new Date().toISOString(),
       tf: currentTf,
@@ -3075,6 +3096,25 @@ async function analyzeWithClaude(){
   } catch(err) {
     console.error('Claude分析エラー:', err);
     runFallbackAnalysis();
+  }
+}
+
+function updateAiTradeIndicator(){
+  var el = document.getElementById('aiTradeIndicator');
+  if(!el) return;
+  var ai = window._lastAiOutput;
+  if(!ai){ el.textContent = '❓ AI未分析'; el.style.color = 'var(--muted)'; return; }
+  var a = ai.action || 'WAIT';
+  if(a === 'BUY'){
+    el.textContent = '✅ AI推奨'; el.style.color = 'var(--green)';
+  } else if(a === 'SELL'){
+    el.textContent = '✅ AI推奨'; el.style.color = 'var(--red)';
+  } else if(a === 'WAIT'){
+    el.textContent = '⚠️ AI: WAIT中'; el.style.color = '#ff8c00';
+  } else if(a === 'WATCH_BUY' || a === 'WATCH_SELL'){
+    el.textContent = '👁 AI: 監視中'; el.style.color = 'var(--gold)';
+  } else {
+    el.textContent = '❓ AI未分析'; el.style.color = 'var(--muted)';
   }
 }
 
@@ -3679,6 +3719,32 @@ function showTrdToast(msg, color){
 
 async function executeTrade(side, lot, price){
   if(_orderInProgress) return;
+
+  // ── AI発注ガード ──
+  var _aiOut = window._lastAiOutput || null;
+  if(!_aiOut){
+    if(!confirm('AI分析が未実行です。分析してからエントリーすることを推奨します。それでも続けますか？')) return;
+  } else if(_aiOut.action === 'WAIT'){
+    var _wrc = _aiOut.wait_reason_category || '不明';
+    var _th  = _aiOut.trend_higher || '不明';
+    if(!confirm('⚠️ AI分析はWAITを推奨しています\n理由: ' + _wrc + '\n上位足トレンド: ' + _th + '\nそれでも手動でエントリーしますか？')) return;
+    // 上位足逆行チェック
+    var _isReverse = _aiOut.trend_higher === 'RANGE'
+      || (_aiOut.trend_higher === 'DOWN' && side === 'buy')
+      || (_aiOut.trend_higher === 'UP'   && side === 'sell');
+    if(_isReverse) showTrdToast('🚨 上位足が逆行しています！', 'var(--red)');
+    // 手動オーバーライドログ
+    window._manualOverrideLog = window._manualOverrideLog || [];
+    window._manualOverrideLog.push({
+      timestamp: new Date().toISOString(),
+      ai_action: 'WAIT',
+      wait_reason: _aiOut.wait_reason_category,
+      trend_higher: _aiOut.trend_higher,
+      manual_side: side,
+      price: _trdAsk
+    });
+  }
+
   if(!MT5_TOKEN || !MT5_ACCOUNT_ID){
     showTrdToast('MT5未接続です', 'var(--red)'); return;
   }

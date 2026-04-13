@@ -158,18 +158,25 @@
     /* ===== Feature Card ===== */
     .feature-card {
       background: var(--color-bg-tertiary);
-      border-radius: 8px;
-      padding: 16px 20px;
-      margin-bottom: 12px;
+      border-left: 2px solid #E0E0E0;
+      border-radius: 0 4px 4px 0;
+      padding: 14px 16px;
+      margin-bottom: 8px;
       display: flex;
       align-items: flex-start;
-      gap: 12px;
+      gap: 14px;
     }
 
-    .feature-card .icon {
-      font-size: 20px;
+    .feature-num {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--color-accent-gold);
+      letter-spacing: 0.06em;
       flex-shrink: 0;
-      margin-top: 2px;
+      margin-top: 3px;
+      line-height: 1;
+      width: 20px;
+      text-align: center;
     }
 
     .feature-card .text {
@@ -180,48 +187,52 @@
 
     /* ===== Before/After Contrast ===== */
     .contrast-block {
-      margin-bottom: 32px;
+      margin-bottom: 28px;
+    }
+
+    .contrast-block:last-of-type {
+      margin-bottom: 0;
     }
 
     .contrast-before {
       font-size: 13px;
-      color: rgba(255,255,255,0.45);
-      margin-bottom: 6px;
+      color: rgba(255,255,255,0.5);
+      margin-bottom: 8px;
       padding-left: 4px;
+      line-height: 1.6;
     }
 
     .contrast-arrow {
       color: var(--color-accent-gold);
-      font-size: 18px;
+      font-size: 16px;
       text-align: center;
-      margin: 6px 0;
+      margin: 8px 0;
     }
 
     .contrast-after {
       font-size: 15px;
       color: rgba(255,255,255,0.92);
-      line-height: 1.7;
+      line-height: 1.75;
     }
 
     .contrast-divider {
       border: none;
       border-top: 1px solid var(--color-divider-dark);
-      margin: 24px 0;
+      margin: 20px 0;
     }
 
-    /* ===== Testimonial Card ===== */
+    /* ===== Testimonial Card (flat, left-border style) ===== */
     .testimonial-card {
-      background: var(--color-bg-tertiary);
-      border-radius: 8px;
-      padding: 20px;
-      margin-bottom: 16px;
+      border-left: 2px solid #E8E8E8;
+      padding: 4px 0 4px 16px;
+      margin-bottom: 24px;
     }
 
     .testimonial-text {
       font-size: 14px;
       color: var(--color-text-secondary);
       line-height: 1.8;
-      margin-bottom: 12px;
+      margin-bottom: 10px;
     }
 
     .testimonial-attr {
@@ -230,6 +241,10 @@
     }
 
     /* ===== FAQ Accordion ===== */
+    .faq-list {
+      border-top: 1px solid var(--color-divider);
+    }
+
     .faq-item {
       border-bottom: 1px solid var(--color-divider);
     }
@@ -308,7 +323,7 @@
       color: var(--color-cta-hover);
     }
 
-    /* ===== Checklist ===== */
+    /* ===== Checklist (Section 7) ===== */
     .checklist {
       list-style: none;
       display: inline-block;
@@ -334,18 +349,28 @@
     /* ===== Pain checklist (Section 2) ===== */
     .pain-list {
       list-style: none;
-      display: inline-block;
-      text-align: left;
+      width: 100%;
     }
 
     .pain-list li {
       font-size: 15px;
       color: var(--color-text-secondary);
-      line-height: 2.2;
+      line-height: 1.7;
+      padding: 10px 0;
+      border-bottom: 1px solid #F0F0F0;
+    }
+
+    .pain-list li:first-child {
+      border-top: 1px solid #F0F0F0;
+    }
+
+    .pain-list li:last-child {
+      border-bottom: none;
+      padding-bottom: 0;
     }
 
     .pain-list-wrap {
-      text-align: center;
+      width: 100%;
     }
 
     /* ===== Desktop ===== */
@@ -370,7 +395,7 @@
 </head>
 <body>
 
-  <!-- ===== Section 1: Hero ===== -->
+  <!-- ===== Section 1: Hero (変更なし) ===== -->
   <section style="background: #0D0D0D; padding: 64px 20px;">
     <div class="container">
       <div class="hero-content">
@@ -427,13 +452,11 @@
         独学でFXが続かない、本当の理由
       </h2>
 
-      <p style="font-size: 15px; color: #333333; line-height: 1.8; text-align: center; margin-bottom: 16px;">
-        FXの情報は、今の時代いくらでも手に入ります。<br>
-        それでも独学で行き詰まる人が多いのは、<br>
-        情報が少ないからではありません。
+      <p style="font-size: 15px; color: #333333; line-height: 1.8; text-align: left; margin-bottom: 16px;">
+        FXの情報は、今の時代いくらでも手に入ります。それでも独学で行き詰まる人が多いのは、情報が少ないからではありません。
       </p>
 
-      <p style="font-size: 15px; color: #333333; line-height: 1.8; text-align: center; margin-bottom: 0;">
+      <p style="font-size: 15px; color: #333333; line-height: 1.9; text-align: left; margin-bottom: 0;">
         「何を、どの順番で学べばいいか」が分からないこと。<br>
         「自分の判断が合っているか」を確認できる場所がないこと。<br>
         この2つが、独学の限界です。
@@ -458,17 +481,17 @@
       </p>
 
       <div class="feature-card">
-        <span class="icon">📋</span>
+        <span class="feature-num">01</span>
         <p class="text">何をどの順番で学ぶか、最初から整理されている</p>
       </div>
 
       <div class="feature-card">
-        <span class="icon">📊</span>
+        <span class="feature-num">02</span>
         <p class="text">毎日の相場解説で、実際の判断の練習ができる</p>
       </div>
 
       <div class="feature-card">
-        <span class="icon">💬</span>
+        <span class="feature-num">03</span>
         <p class="text">分からないことを相談できる場所がある</p>
       </div>
 
@@ -512,7 +535,7 @@
         <p class="contrast-after">疑問や判断を共有できる場所があるため、一人で詰まったまま止まることがなくなります。</p>
       </div>
 
-      <p style="font-size: 13px; color: rgba(255,255,255,0.5); text-align: center; margin-top: 24px;">
+      <p style="font-size: 13px; color: rgba(255,255,255,0.5); text-align: center; margin-top: 28px;">
         提供しているのはコンテンツではなく、「迷わず続けられる環境」です。
       </p>
     </div>
@@ -523,20 +546,16 @@
     <div class="container">
 
       <!-- Block A: About the instructor -->
-      <p style="font-size: 14px; color: #888888; text-align: center; margin-bottom: 16px;">運営について</p>
+      <p style="font-size: 12px; color: #888888; text-align: center; letter-spacing: 0.06em; margin-bottom: 20px;">運営について</p>
 
-      <p style="font-size: 14px; color: #333333; line-height: 1.8; text-align: center;">
+      <p style="font-size: 14px; font-weight: 500; color: #0D0D0D; line-height: 1.6; text-align: center; margin-bottom: 16px;">
         代表：Maru
       </p>
-      <p style="font-size: 14px; color: #333333; line-height: 1.8; text-align: center; margin-top: 12px;">
-        「FXで勝てない人の多くは、手法より先に<br>
-        判断の土台が抜けている」という考えのもと、<br>
-        GOLD RUSHを設計・運営しています。
+      <p style="font-size: 14px; color: #333333; line-height: 1.8; text-align: left; margin-bottom: 12px;">
+        「FXで勝てない人の多くは、手法より先に判断の土台が抜けている」という考えのもと、GOLD RUSHを設計・運営しています。
       </p>
-      <p style="font-size: 14px; color: #333333; line-height: 1.8; text-align: center; margin-top: 12px;">
-        指導の軸は「感覚ではなく、論理と順番」。<br>
-        「早く稼がせる」場所ではなく、<br>
-        「自分で判断できるようにする」場所です。
+      <p style="font-size: 14px; color: #333333; line-height: 1.8; text-align: left;">
+        指導の軸は「感覚ではなく、論理と順番」。「早く稼がせる」場所ではなく、「自分で判断できるようにする」場所です。
       </p>
 
       <hr class="section-hr">
@@ -563,50 +582,52 @@
         登録する前に確認したいこと
       </h2>
 
-      <div class="faq-item">
-        <button class="faq-question" type="button">
-          登録したら、売り込まれますか？
-          <span class="faq-icon">+</span>
-        </button>
-        <div class="faq-answer">
-          しません。登録後はコンテンツが順番に届きます。「入会してください」という連絡は、コンテンツの最後に一度だけ案内する形です。読んで合わないと思えば、そのままにしていただいて構いません。
+      <div class="faq-list">
+        <div class="faq-item">
+          <button class="faq-question" type="button">
+            登録したら、売り込まれますか？
+            <span class="faq-icon">+</span>
+          </button>
+          <div class="faq-answer">
+            しません。登録後はコンテンツが順番に届きます。「入会してください」という連絡は、コンテンツの最後に一度だけ案内する形です。読んで合わないと思えば、そのままにしていただいて構いません。
+          </div>
         </div>
-      </div>
 
-      <div class="faq-item">
-        <button class="faq-question" type="button">
-          FXの経験がゼロでも大丈夫ですか？
-          <span class="faq-icon">+</span>
-        </button>
-        <div class="faq-answer">
-          はい。専門用語は日常語に置き換えた資料を用意しています。「FXって何？」という状態からでも読み進められます。
+        <div class="faq-item">
+          <button class="faq-question" type="button">
+            FXの経験がゼロでも大丈夫ですか？
+            <span class="faq-icon">+</span>
+          </button>
+          <div class="faq-answer">
+            はい。専門用語は日常語に置き換えた資料を用意しています。「FXって何？」という状態からでも読み進められます。
+          </div>
         </div>
-      </div>
 
-      <div class="faq-item">
-        <button class="faq-question" type="button">
-          忙しくて時間が取れません。
-          <span class="faq-icon">+</span>
-        </button>
-        <div class="faq-answer">
-          1日30分を目安に、自分のペースで進める設計です。毎日チャートに張り付く必要はありません。
+        <div class="faq-item">
+          <button class="faq-question" type="button">
+            忙しくて時間が取れません。
+            <span class="faq-icon">+</span>
+          </button>
+          <div class="faq-answer">
+            1日30分を目安に、自分のペースで進める設計です。毎日チャートに張り付く必要はありません。
+          </div>
         </div>
-      </div>
 
-      <div class="faq-item">
-        <button class="faq-question" type="button">
-          合わなかった場合はどうなりますか？
-          <span class="faq-icon">+</span>
-        </button>
-        <div class="faq-answer">
-          月額制のため、翌月以降の解約は自由にできます。最低利用期間や違約金はありません。
+        <div class="faq-item">
+          <button class="faq-question" type="button">
+            合わなかった場合はどうなりますか？
+            <span class="faq-icon">+</span>
+          </button>
+          <div class="faq-answer">
+            月額制のため、翌月以降の解約は自由にできます。最低利用期間や違約金はありません。
+          </div>
         </div>
       </div>
 
     </div>
   </section>
 
-  <!-- ===== Section 7: Closing CTA ===== -->
+  <!-- ===== Section 7: Closing CTA (変更なし) ===== -->
   <section style="background: #0D0D0D; padding: 64px 20px;">
     <div class="container">
       <h2 style="font-size: 22px; font-weight: 700; color: #FFFFFF; text-align: center; margin-bottom: 24px;">

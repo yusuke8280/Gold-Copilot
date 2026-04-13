@@ -1,0 +1,666 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GOLD RUSH — FX初心者のための判断基準を育てる公式LINE</title>
+  <meta name="description" content="FXを始めたのに、何から学べばいいか分からないままですか？GOLD RUSHの公式LINEでは、FX初心者が「判断の基準」を育てるための無料コンテンツを配信しています。">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+  <style>
+    /* ===== Reset & Base ===== */
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    :root {
+      --color-bg-primary: #0D0D0D;
+      --color-bg-secondary: #FFFFFF;
+      --color-bg-tertiary: #F7F7F7;
+      --color-bg-card: #1A1A1A;
+      --color-accent-gold: #F5C400;
+      --color-accent-gold-muted: #C49A00;
+      --color-cta: #06C755;
+      --color-cta-hover: #05A848;
+      --color-text-primary: #0D0D0D;
+      --color-text-secondary: #333333;
+      --color-text-muted: #888888;
+      --color-text-on-dark: #FFFFFF;
+      --color-text-on-dark-muted: rgba(255,255,255,0.65);
+      --color-trust-bg: #E8F5E9;
+      --color-trust-border: #06C755;
+      --color-divider: #EEEEEE;
+      --color-divider-dark: #222222;
+    }
+
+    html {
+      -webkit-text-size-adjust: 100%;
+    }
+
+    body {
+      font-family: 'Noto Sans JP', 'Hiragino Kaku Gothic ProN', 'Yu Gothic', sans-serif;
+      font-size: 15px;
+      line-height: 1.8;
+      color: var(--color-text-secondary);
+      background: var(--color-bg-secondary);
+      -webkit-font-smoothing: antialiased;
+      overflow-x: hidden;
+      font-feature-settings: "palt" 1;
+    }
+
+    /* ===== Layout ===== */
+    .container {
+      max-width: 640px;
+      margin: 0 auto;
+      width: 100%;
+    }
+
+    section {
+      padding: 48px 20px;
+    }
+
+    /* ===== Typography ===== */
+    h1 {
+      font-size: 26px;
+      font-weight: 700;
+      line-height: 1.4;
+      letter-spacing: -0.01em;
+    }
+
+    h2 {
+      font-size: 18px;
+      font-weight: 700;
+      line-height: 1.5;
+      letter-spacing: -0.01em;
+    }
+
+    p {
+      font-size: 15px;
+      line-height: 1.8;
+    }
+
+    /* ===== Logo ===== */
+    .logo {
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--color-accent-gold);
+      letter-spacing: 0.12em;
+      text-align: center;
+      margin-bottom: 24px;
+    }
+
+    /* ===== CTA Button ===== */
+    .btn-cta {
+      display: block;
+      width: 85%;
+      max-width: 360px;
+      margin: 0 auto;
+      padding: 16px 24px;
+      min-height: 52px;
+      background: var(--color-cta);
+      color: #FFFFFF;
+      font-size: 16px;
+      font-weight: 700;
+      text-align: center;
+      border-radius: 28px;
+      border: none;
+      cursor: pointer;
+      text-decoration: none;
+      transition: background 0.2s ease, transform 0.15s ease;
+      font-family: 'Noto Sans JP', sans-serif;
+      font-feature-settings: "palt" 1;
+    }
+
+    .btn-cta:hover {
+      background: var(--color-cta-hover);
+    }
+
+    .btn-cta:active {
+      transform: scale(0.97);
+    }
+
+    .btn-subtext {
+      text-align: center;
+      font-size: 12px;
+      color: var(--color-text-muted);
+      margin-top: 8px;
+      line-height: 1.6;
+    }
+
+    /* ===== Trust Box ===== */
+    .trust-box {
+      background: var(--color-trust-bg);
+      border-left: 3px solid var(--color-trust-border);
+      padding: 12px 16px;
+      border-radius: 0 6px 6px 0;
+      font-size: 13px;
+      color: #2E7D32;
+      line-height: 1.7;
+      margin-top: 20px;
+    }
+
+    /* ===== Quote Block ===== */
+    .quote-block {
+      background: var(--color-bg-primary);
+      border-radius: 8px;
+      padding: 20px 24px;
+      font-size: 15px;
+      font-style: italic;
+      color: var(--color-accent-gold);
+      text-align: center;
+      line-height: 1.8;
+      margin-top: 24px;
+    }
+
+    /* ===== Feature Card ===== */
+    .feature-card {
+      background: var(--color-bg-tertiary);
+      border-radius: 8px;
+      padding: 16px 20px;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+    }
+
+    .feature-card .icon {
+      font-size: 20px;
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+
+    .feature-card .text {
+      font-size: 14px;
+      color: var(--color-text-secondary);
+      line-height: 1.7;
+    }
+
+    /* ===== Before/After Contrast ===== */
+    .contrast-block {
+      margin-bottom: 32px;
+    }
+
+    .contrast-before {
+      font-size: 13px;
+      color: rgba(255,255,255,0.45);
+      margin-bottom: 6px;
+      padding-left: 4px;
+    }
+
+    .contrast-arrow {
+      color: var(--color-accent-gold);
+      font-size: 18px;
+      text-align: center;
+      margin: 6px 0;
+    }
+
+    .contrast-after {
+      font-size: 15px;
+      color: rgba(255,255,255,0.92);
+      line-height: 1.7;
+    }
+
+    .contrast-divider {
+      border: none;
+      border-top: 1px solid var(--color-divider-dark);
+      margin: 24px 0;
+    }
+
+    /* ===== Testimonial Card ===== */
+    .testimonial-card {
+      background: var(--color-bg-tertiary);
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 16px;
+    }
+
+    .testimonial-text {
+      font-size: 14px;
+      color: var(--color-text-secondary);
+      line-height: 1.8;
+      margin-bottom: 12px;
+    }
+
+    .testimonial-attr {
+      font-size: 12px;
+      color: var(--color-text-muted);
+    }
+
+    /* ===== FAQ Accordion ===== */
+    .faq-item {
+      border-bottom: 1px solid var(--color-divider);
+    }
+
+    .faq-question {
+      width: 100%;
+      background: none;
+      border: none;
+      padding: 18px 0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 15px;
+      font-weight: 500;
+      color: var(--color-text-primary);
+      text-align: left;
+      cursor: pointer;
+      font-family: 'Noto Sans JP', sans-serif;
+      font-feature-settings: "palt" 1;
+    }
+
+    .faq-icon {
+      color: var(--color-accent-gold);
+      font-size: 18px;
+      transition: transform 0.25s ease;
+      flex-shrink: 0;
+      margin-left: 12px;
+      line-height: 1;
+    }
+
+    .faq-item.open .faq-icon {
+      transform: rotate(45deg);
+    }
+
+    .faq-answer {
+      display: none;
+      font-size: 14px;
+      color: var(--color-text-secondary);
+      line-height: 1.8;
+      padding-bottom: 18px;
+    }
+
+    .faq-item.open .faq-answer {
+      display: block;
+    }
+
+    /* ===== Section divider ===== */
+    .section-hr {
+      border: none;
+      border-top: 1px solid var(--color-divider);
+      margin: 32px 0;
+    }
+
+    /* ===== Hero animation ===== */
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(16px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    .hero-content {
+      animation: fadeUp 0.5s ease forwards;
+    }
+
+    /* ===== CTA text link ===== */
+    .cta-text-link {
+      display: block;
+      text-align: center;
+      margin-top: 20px;
+      color: var(--color-cta);
+      font-size: 14px;
+      text-decoration: underline;
+      cursor: pointer;
+    }
+
+    .cta-text-link:hover {
+      color: var(--color-cta-hover);
+    }
+
+    /* ===== Checklist ===== */
+    .checklist {
+      list-style: none;
+      display: inline-block;
+      text-align: left;
+    }
+
+    .checklist li {
+      font-size: 14px;
+      color: var(--color-text-on-dark);
+      line-height: 2.2;
+    }
+
+    .checklist .check-icon {
+      color: var(--color-accent-gold);
+      margin-right: 8px;
+    }
+
+    .checklist-wrap {
+      text-align: center;
+      margin-bottom: 28px;
+    }
+
+    /* ===== Pain checklist (Section 2) ===== */
+    .pain-list {
+      list-style: none;
+      display: inline-block;
+      text-align: left;
+    }
+
+    .pain-list li {
+      font-size: 15px;
+      color: var(--color-text-secondary);
+      line-height: 2.2;
+    }
+
+    .pain-list-wrap {
+      text-align: center;
+    }
+
+    /* ===== Desktop ===== */
+    @media (min-width: 768px) {
+      section {
+        padding: 64px 40px;
+      }
+
+      h1 {
+        font-size: 36px;
+      }
+
+      p {
+        font-size: 16px;
+      }
+
+      .btn-cta {
+        font-size: 16px;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ===== Section 1: Hero ===== -->
+  <section style="background: #0D0D0D; padding: 64px 20px;">
+    <div class="container">
+      <div class="hero-content">
+        <p class="logo">GOLD RUSH</p>
+
+        <h1 style="color: #FFFFFF; text-align: center; margin-bottom: 20px;">
+          FXを始めたのに、<br>
+          何から学べばいいか<br>
+          まだ分からないままですか？
+        </h1>
+
+        <p style="font-size: 14px; color: rgba(255,255,255,0.65); text-align: center; line-height: 1.8; margin-bottom: 32px;">
+          GOLD RUSHの公式LINEでは、<br>
+          FX初心者が「判断の基準」を育てるための<br>
+          無料コンテンツを順番に配信しています。<br>
+          登録費用はかかりません。
+        </p>
+
+        <a href="https://lin.ee/6k1KzUb" class="btn-cta" target="_blank" rel="noopener noreferrer">
+          公式LINEに無料登録する
+        </a>
+        <p class="btn-subtext">登録後すぐにコンテンツが届きます</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== Section 2: Empathy / Pain ===== -->
+  <section style="background: #FFFFFF;">
+    <div class="container">
+      <h2 style="color: #0D0D0D; text-align: center; margin-bottom: 24px;">
+        こんな状態に心当たりがありますか？
+      </h2>
+
+      <div class="pain-list-wrap">
+        <ul class="pain-list">
+          <li>□ 手法を試しても、なぜ負けたかが分からない</li>
+          <li>□ チャートを見るたびに、エントリーしていいか迷う</li>
+          <li>□ 情報を調べるほど、何が正しいか分からなくなる</li>
+          <li>□ 相談できる人がおらず、自分のやり方が合っているか不安</li>
+        </ul>
+      </div>
+
+      <p style="font-size: 13px; color: #888888; text-align: center; line-height: 1.7; margin-top: 24px;">
+        これは、FXを独学で始めた人のほぼ全員が通る状態です。<br>
+        能力の問題ではありません。
+      </p>
+    </div>
+  </section>
+
+  <!-- ===== Section 3: Problem Root ===== -->
+  <section style="background: #F7F7F7;">
+    <div class="container">
+      <h2 style="color: #0D0D0D; text-align: center; margin-bottom: 20px;">
+        独学でFXが続かない、本当の理由
+      </h2>
+
+      <p style="font-size: 15px; color: #333333; line-height: 1.8; text-align: center; margin-bottom: 16px;">
+        FXの情報は、今の時代いくらでも手に入ります。<br>
+        それでも独学で行き詰まる人が多いのは、<br>
+        情報が少ないからではありません。
+      </p>
+
+      <p style="font-size: 15px; color: #333333; line-height: 1.8; text-align: center; margin-bottom: 0;">
+        「何を、どの順番で学べばいいか」が分からないこと。<br>
+        「自分の判断が合っているか」を確認できる場所がないこと。<br>
+        この2つが、独学の限界です。
+      </p>
+
+      <div class="quote-block">
+        「GOLD RUSHは、情報を増やす場所ではなく、<br>
+        判断の基準を育てる場所です。」
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== Section 4: What is GOLD RUSH ===== -->
+  <section style="background: #FFFFFF;">
+    <div class="container">
+      <h2 style="color: #0D0D0D; text-align: center; margin-bottom: 16px;">
+        GOLD RUSHとは
+      </h2>
+
+      <p style="font-size: 15px; color: #333333; line-height: 1.8; text-align: center; margin-bottom: 24px;">
+        GOLD RUSHは、FX初心者がなんとなく相場を見る状態から、<br>
+        根拠を持って判断し、資金を守りながら学べるようになるための<br>
+        学習環境です。
+      </p>
+
+      <div class="feature-card">
+        <span class="icon">📋</span>
+        <p class="text">何をどの順番で学ぶか、最初から整理されている</p>
+      </div>
+
+      <div class="feature-card">
+        <span class="icon">📊</span>
+        <p class="text">毎日の相場解説で、実際の判断の練習ができる</p>
+      </div>
+
+      <div class="feature-card">
+        <span class="icon">💬</span>
+        <p class="text">分からないことを相談できる場所がある</p>
+      </div>
+
+      <div class="trust-box">
+        LINEの登録は無料です。登録後に費用が発生することはありません。<br>
+        売り込みの連絡もしません。コンテンツを読んで、合うと思えば入会してください。
+      </div>
+
+      <a href="https://lin.ee/6k1KzUb" class="cta-text-link" target="_blank" rel="noopener noreferrer">
+        まずはLINEで内容を確認する（登録無料）
+      </a>
+    </div>
+  </section>
+
+  <!-- ===== Section 5: Before/After ===== -->
+  <section style="background: #0D0D0D;">
+    <div class="container">
+      <h2 style="color: #FFFFFF; text-align: center; margin-bottom: 32px;">
+        入ると、何が変わるか
+      </h2>
+
+      <div class="contrast-block">
+        <p class="contrast-before">チャートを開いても、今エントリーすべきか分からない</p>
+        <p class="contrast-arrow">↓</p>
+        <p class="contrast-after">毎日「今日の相場がどういう状態か」の解説が届くため、自分なりの判断の基準が少しずつ育っていきます。</p>
+      </div>
+
+      <hr class="contrast-divider">
+
+      <div class="contrast-block">
+        <p class="contrast-before">負けた理由が分からないまま、次のトレードをしている</p>
+        <p class="contrast-arrow">↓</p>
+        <p class="contrast-after">実際のトレードの根拠と結果の解説を見ることで、「なぜここでエントリーするのか」の考え方が分かってきます。</p>
+      </div>
+
+      <hr class="contrast-divider">
+
+      <div class="contrast-block">
+        <p class="contrast-before">自分のやり方が合っているか、誰にも確認できない</p>
+        <p class="contrast-arrow">↓</p>
+        <p class="contrast-after">疑問や判断を共有できる場所があるため、一人で詰まったまま止まることがなくなります。</p>
+      </div>
+
+      <p style="font-size: 13px; color: rgba(255,255,255,0.5); text-align: center; margin-top: 24px;">
+        提供しているのはコンテンツではなく、「迷わず続けられる環境」です。
+      </p>
+    </div>
+  </section>
+
+  <!-- ===== Section 6: Instructor + Testimonials + FAQ ===== -->
+  <section style="background: #FFFFFF;">
+    <div class="container">
+
+      <!-- Block A: About the instructor -->
+      <p style="font-size: 14px; color: #888888; text-align: center; margin-bottom: 16px;">運営について</p>
+
+      <p style="font-size: 14px; color: #333333; line-height: 1.8; text-align: center;">
+        代表：Maru
+      </p>
+      <p style="font-size: 14px; color: #333333; line-height: 1.8; text-align: center; margin-top: 12px;">
+        「FXで勝てない人の多くは、手法より先に<br>
+        判断の土台が抜けている」という考えのもと、<br>
+        GOLD RUSHを設計・運営しています。
+      </p>
+      <p style="font-size: 14px; color: #333333; line-height: 1.8; text-align: center; margin-top: 12px;">
+        指導の軸は「感覚ではなく、論理と順番」。<br>
+        「早く稼がせる」場所ではなく、<br>
+        「自分で判断できるようにする」場所です。
+      </p>
+
+      <hr class="section-hr">
+
+      <!-- Block B: Testimonials -->
+      <div class="testimonial-card">
+        <p class="testimonial-text">
+          YouTubeや本を読んでも知識がバラバラでした。GOLD RUSHに入ってから、何をどの順番でやればいいかが初めて整理できた感覚があります。
+        </p>
+        <p class="testimonial-attr">28歳・男性・会社員</p>
+      </div>
+
+      <div class="testimonial-card">
+        <p class="testimonial-text">
+          負けても理由が分からないまま続けていましたが、毎日の解説を見るうちに、どこで判断がズレていたか分かるようになってきました。
+        </p>
+        <p class="testimonial-attr">24歳・男性・会社員</p>
+      </div>
+
+      <hr class="section-hr">
+
+      <!-- Block C: FAQ -->
+      <h2 style="color: #0D0D0D; text-align: center; margin-bottom: 24px;">
+        登録する前に確認したいこと
+      </h2>
+
+      <div class="faq-item">
+        <button class="faq-question" type="button">
+          登録したら、売り込まれますか？
+          <span class="faq-icon">+</span>
+        </button>
+        <div class="faq-answer">
+          しません。登録後はコンテンツが順番に届きます。「入会してください」という連絡は、コンテンツの最後に一度だけ案内する形です。読んで合わないと思えば、そのままにしていただいて構いません。
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <button class="faq-question" type="button">
+          FXの経験がゼロでも大丈夫ですか？
+          <span class="faq-icon">+</span>
+        </button>
+        <div class="faq-answer">
+          はい。専門用語は日常語に置き換えた資料を用意しています。「FXって何？」という状態からでも読み進められます。
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <button class="faq-question" type="button">
+          忙しくて時間が取れません。
+          <span class="faq-icon">+</span>
+        </button>
+        <div class="faq-answer">
+          1日30分を目安に、自分のペースで進める設計です。毎日チャートに張り付く必要はありません。
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <button class="faq-question" type="button">
+          合わなかった場合はどうなりますか？
+          <span class="faq-icon">+</span>
+        </button>
+        <div class="faq-answer">
+          月額制のため、翌月以降の解約は自由にできます。最低利用期間や違約金はありません。
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ===== Section 7: Closing CTA ===== -->
+  <section style="background: #0D0D0D; padding: 64px 20px;">
+    <div class="container">
+      <h2 style="font-size: 22px; font-weight: 700; color: #FFFFFF; text-align: center; margin-bottom: 24px;">
+        まず、読んでみてください。
+      </h2>
+
+      <p style="font-size: 14px; color: rgba(255,255,255,0.65); text-align: center; margin-bottom: 20px; line-height: 1.8;">
+        公式LINEに登録すると、<br>
+        以下のコンテンツが順番に届きます。
+      </p>
+
+      <div class="checklist-wrap">
+        <ul class="checklist">
+          <li><span class="check-icon">✓</span>独学でFXが続かない本当の理由</li>
+          <li><span class="check-icon">✓</span>負け方の管理が、勝敗を分けるという話</li>
+          <li><span class="check-icon">✓</span>なぜゴールド（金）を選ぶのか</li>
+          <li><span class="check-icon">✓</span>GOLD RUSHで実際に何ができるか</li>
+        </ul>
+      </div>
+
+      <p style="font-size: 13px; color: rgba(255,255,255,0.45); text-align: center; margin-bottom: 28px;">
+        読んでから、入会を判断できます。
+      </p>
+
+      <a href="https://lin.ee/6k1KzUb" class="btn-cta" target="_blank" rel="noopener noreferrer">
+        公式LINEに無料登録する
+      </a>
+
+      <p style="font-size: 12px; color: #666666; text-align: center; margin-top: 10px; line-height: 1.8;">
+        費用はかかりません<br>
+        コンテンツを読んでから、入会を判断できます
+      </p>
+
+      <p style="font-size: 11px; color: #444444; text-align: center; margin-top: 48px;">
+        © 2026 GOLD RUSH
+      </p>
+    </div>
+  </section>
+
+  <!-- ===== JavaScript ===== -->
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      // イベント委譲：.faq-question のクリックを document レベルで捕捉
+      document.addEventListener('click', function(e) {
+        var btn = e.target.closest('.faq-question');
+        if (!btn) return;
+        var item = btn.closest('.faq-item');
+        if (!item) return;
+        item.classList.toggle('open');
+      });
+    });
+  </script>
+
+</body>
+</html>
